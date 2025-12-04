@@ -265,7 +265,7 @@ export function RepayModal({ open, onClose, position }: RepayModalProps) {
       );
 
       // Step 2: 레거시 시스템 연동 (시뮬레이션)
-      const legacyDelay = Math.floor(Math.random() * 3000) + 2000; // 2~5초 랜덤 대기
+      const legacyDelay = Math.floor(Math.random() * 1000) + 4000; // 4~5초 랜덤 대기
       await new Promise((resolve) => setTimeout(resolve, legacyDelay));
       setTxSteps((prev) =>
         prev.map((s) =>
@@ -326,7 +326,7 @@ export function RepayModal({ open, onClose, position }: RepayModalProps) {
         );
 
         // Step 6: 레거시 시스템 이벤트 수신 (시뮬레이션)
-        const legacyDelay = Math.floor(Math.random() * 3000) + 2000; // 2~5초 랜덤 대기
+        const legacyDelay = Math.floor(Math.random() * 1000) + 4000; // 4~5초 랜덤 대기
         await new Promise((resolve) => setTimeout(resolve, legacyDelay));
         setTxSteps((prev) =>
           prev.map((s) =>
@@ -339,7 +339,8 @@ export function RepayModal({ open, onClose, position }: RepayModalProps) {
         );
 
         // Step 7: 질권 해제 (시뮬레이션)
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        const pledgeReleaseDelay = Math.floor(Math.random() * 1000) + 4000; // 4000~5000ms
+        await new Promise((resolve) => setTimeout(resolve, pledgeReleaseDelay));
         setTxSteps((prev) =>
           prev.map((s) =>
             s.id === 'pledge_release'
@@ -351,7 +352,8 @@ export function RepayModal({ open, onClose, position }: RepayModalProps) {
         );
 
         // Step 8: 담보 주식 유저에게 전달 (시뮬레이션)
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        const stockTransferDelay = Math.floor(Math.random() * 1000) + 4000; // 4000~5000ms
+        await new Promise((resolve) => setTimeout(resolve, stockTransferDelay));
         setTxSteps((prev) =>
           prev.map((s) =>
             s.id === 'stock_transfer'

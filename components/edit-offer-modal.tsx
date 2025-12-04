@@ -251,7 +251,7 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
           // 담보 증가: legacy → pledge → tokenize → approve → update
 
           // Step 1: 레거시 시스템 연동 (유저계좌 확인)
-          const legacyDelay = Math.floor(Math.random() * 3000) + 2000; // 2000~5000ms
+          const legacyDelay = Math.floor(Math.random() * 1000) + 4000; // 4000~5000ms
           await new Promise((resolve) => setTimeout(resolve, legacyDelay));
           setTxSteps((prev) =>
             prev.map((s) =>
@@ -264,7 +264,8 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
           );
 
           // Step 2: 추가 담보 질권설정 (시뮬레이션)
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+          const pledgeDelay = Math.floor(Math.random() * 1000) + 4000; // 4000~5000ms
+          await new Promise((resolve) => setTimeout(resolve, pledgeDelay));
           setTxSteps((prev) =>
             prev.map((s) =>
               s.id === 'pledge'
@@ -318,7 +319,8 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
           // 담보 감소: verify → burn → legacy_event → pledge_release → stock_return → update
 
           // Step 1: 상품 정보 확인
-          await new Promise((resolve) => setTimeout(resolve, 500));
+          const verifyDelay = Math.floor(Math.random() * 1000) + 4000; // 4000~5000ms
+          await new Promise((resolve) => setTimeout(resolve, verifyDelay));
           setTxSteps((prev) =>
             prev.map((s) =>
               s.id === 'verify'
@@ -330,7 +332,8 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
           );
 
           // Step 2: 담보토큰 Burn (시뮬레이션)
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+          const burnDelay = Math.floor(Math.random() * 1000) + 4000; // 4000~5000ms
+          await new Promise((resolve) => setTimeout(resolve, burnDelay));
           setTxSteps((prev) =>
             prev.map((s) =>
               s.id === 'burn'
@@ -347,7 +350,7 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
           }
 
           // Step 3: 레거시 시스템 이벤트 수신 (시뮬레이션)
-          const legacyDelay = Math.floor(Math.random() * 3000) + 2000; // 2000~5000ms
+          const legacyDelay = Math.floor(Math.random() * 1000) + 4000; // 4000~5000ms
           await new Promise((resolve) => setTimeout(resolve, legacyDelay));
           setTxSteps((prev) =>
             prev.map((s) =>
@@ -360,7 +363,8 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
           );
 
           // Step 4: 질권 일부 해제 (시뮬레이션)
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+          const pledgeReleaseDelay = Math.floor(Math.random() * 1000) + 4000; // 4000~5000ms
+          await new Promise((resolve) => setTimeout(resolve, pledgeReleaseDelay));
           setTxSteps((prev) =>
             prev.map((s) =>
               s.id === 'pledge_release'
@@ -372,7 +376,8 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
           );
 
           // Step 5: 담보 주식 유저에게 반환 (시뮬레이션) 및 updateBorrowOffer
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+          const stockReturnDelay = Math.floor(Math.random() * 1000) + 4000; // 4000~5000ms
+          await new Promise((resolve) => setTimeout(resolve, stockReturnDelay));
           const offerId =
             'onChainId' in borrowOffer && typeof borrowOffer.onChainId === 'bigint'
               ? borrowOffer.onChainId
@@ -396,7 +401,8 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
           // 담보 변동 없음: verify → update
 
           // Step 1: 상품 정보 확인
-          await new Promise((resolve) => setTimeout(resolve, 500));
+          const verifyDelay = Math.floor(Math.random() * 1000) + 4000; // 4000~5000ms
+          await new Promise((resolve) => setTimeout(resolve, verifyDelay));
           setTxSteps((prev) =>
             prev.map((s) =>
               s.id === 'verify'
@@ -455,7 +461,7 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
           // 대여 금액 증가: legacy → bond_update → tokenize → transfer
 
           // Step 1: 레거시 시스템 연동 (유저계좌 확인)
-          const legacyDelay = Math.floor(Math.random() * 3000) + 2000; // 2000~5000ms
+          const legacyDelay = Math.floor(Math.random() * 1000) + 4000; // 4000~5000ms
           await new Promise((resolve) => setTimeout(resolve, legacyDelay));
           setTxSteps((prev) =>
             prev.map((s) =>
@@ -468,7 +474,8 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
           );
 
           // Step 2: 채권 수정 (시뮬레이션)
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+          const bondUpdateDelay = Math.floor(Math.random() * 1000) + 4000; // 4000~5000ms
+          await new Promise((resolve) => setTimeout(resolve, bondUpdateDelay));
           setTxSteps((prev) =>
             prev.map((s) =>
               s.id === 'bond_update'
@@ -515,7 +522,8 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
           // 대여 금액 감소: verify → token_transfer → burn → legacy_event → bond_update → tx → settle
 
           // Step 1: 상품 정보 확인
-          await new Promise((resolve) => setTimeout(resolve, 500));
+          const verifyDelay = Math.floor(Math.random() * 1000) + 4000; // 4000~5000ms
+          await new Promise((resolve) => setTimeout(resolve, verifyDelay));
           setTxSteps((prev) =>
             prev.map((s) =>
               s.id === 'verify'
@@ -527,7 +535,8 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
           );
 
           // Step 2: dKRW reserveWallet으로 전송 (시뮬레이션)
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+          const tokenTransferDelay = Math.floor(Math.random() * 1000) + 4000; // 4000~5000ms
+          await new Promise((resolve) => setTimeout(resolve, tokenTransferDelay));
           setTxSteps((prev) =>
             prev.map((s) =>
               s.id === 'token_transfer'
@@ -539,7 +548,8 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
           );
 
           // Step 3: 수신된 dKRW Burn 요청 (시뮬레이션)
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+          const burnDelay = Math.floor(Math.random() * 1000) + 4000; // 4000~5000ms
+          await new Promise((resolve) => setTimeout(resolve, burnDelay));
           setTxSteps((prev) =>
             prev.map((s) =>
               s.id === 'burn'
@@ -554,7 +564,7 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
           updateUserCash(Math.abs(cashDiff));
 
           // Step 4: 레거시 시스템 이벤트 수신 (시뮬레이션)
-          const legacyDelay = Math.floor(Math.random() * 3000) + 2000; // 2000~5000ms
+          const legacyDelay = Math.floor(Math.random() * 1000) + 4000; // 4000~5000ms
           await new Promise((resolve) => setTimeout(resolve, legacyDelay));
           setTxSteps((prev) =>
             prev.map((s) =>
@@ -601,7 +611,8 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
           );
 
           // Step 7: 계좌 정산 완료
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+          const settleDelay = Math.floor(Math.random() * 1000) + 4000; // 4000~5000ms
+          await new Promise((resolve) => setTimeout(resolve, settleDelay));
           setTxSteps((prev) =>
             prev.map((s) => (s.id === 'settle' ? { ...s, status: 'complete' } : s)),
           );
@@ -609,7 +620,8 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
           // 대여 금액 변동 없음: verify → bond_update → update
 
           // Step 1: 상품 정보 확인
-          await new Promise((resolve) => setTimeout(resolve, 500));
+          const verifyDelay = Math.floor(Math.random() * 1000) + 4000; // 4000~5000ms
+          await new Promise((resolve) => setTimeout(resolve, verifyDelay));
           setTxSteps((prev) =>
             prev.map((s) =>
               s.id === 'verify'
@@ -621,7 +633,8 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
           );
 
           // Step 2: 채권 수정 (시뮬레이션)
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+          const bondUpdateDelay = Math.floor(Math.random() * 1000) + 4000; // 4000~5000ms
+          await new Promise((resolve) => setTimeout(resolve, bondUpdateDelay));
           setTxSteps((prev) =>
             prev.map((s) =>
               s.id === 'bond_update'

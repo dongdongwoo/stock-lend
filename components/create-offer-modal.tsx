@@ -48,6 +48,7 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
   const [maturityMonths, setMaturityMonths] = useState<number | null>(null);
   const [loanAmount, setLoanAmount] = useState('');
   const [earlyRepayFee, setEarlyRepayFee] = useState('');
+  const [selectedCollateralGroup, setSelectedCollateralGroup] = useState<string>(''); // 대여 상품용: 종목군 선택
 
   const [showTx, setShowTx] = useState(false);
   const [txSteps, setTxSteps] = useState<TxStep[]>([]);
@@ -56,6 +57,13 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
   const [txError, setTxError] = useState<string | null>(null);
 
   const isBorrow = type === 'borrow';
+
+  // 종목군 정의 (대여 상품 등록용)
+  const collateralGroups = [
+    { id: 'A', label: 'A군', ltv: 65, ltvBps: BigInt(6500) },
+    { id: 'B', label: 'B군', ltv: 60, ltvBps: BigInt(6000) },
+    { id: 'C', label: 'C군', ltv: 55, ltvBps: BigInt(5500) },
+  ];
 
   const maturityOptions = [
     { label: '1개월', months: 1, days: 30 },
@@ -82,9 +90,44 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
       setInterestRate('');
       setMaturityMonths(null);
       setEarlyRepayFee('');
+      setSelectedCollateralGroup('');
       setTxError(null);
     }
   }, [open]);
+
+  // 선택된 종목군 정보 (대여 상품용)
+  const selectedGroup = collateralGroups.find((g) => g.id === selectedCollateralGroup);
+
+  // 선택된 종목군에 해당하는 토큰들 필터링 (대여 상품용)
+  // LTV가 선택된 종목군의 LTV와 일치하는 토큰들만 표시
+  const availableTokensForGroup =
+    !isBorrow && selectedGroup
+      ? collateralTokens.filter((token) => {
+          const tokenLtvBps =
+            riskParams[token.symbol]?.maxLtvBps ||
+            riskParams[token.address.toLowerCase()]?.maxLtvBps ||
+            riskParams[token.address]?.maxLtvBps ||
+            BigInt(0);
+          // LTV가 정확히 일치하는 토큰만 필터링 (약간의 오차 허용: ±1 bps)
+          return (
+            tokenLtvBps >= selectedGroup.ltvBps - BigInt(1) &&
+            tokenLtvBps <= selectedGroup.ltvBps + BigInt(1)
+          );
+        })
+      : [];
+
+  // 종목군 선택 시 자동으로 첫 번째 토큰 선택 (대여 상품용)
+  useEffect(() => {
+    if (
+      !isBorrow &&
+      selectedCollateralGroup &&
+      availableTokensForGroup.length > 0 &&
+      !selectedStock
+    ) {
+      setSelectedStock(availableTokensForGroup[0].symbol);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCollateralGroup, isBorrow]);
 
   // 담보 토큰 정보 (온체인 데이터 사용)
   const collateralToken = collateralTokens.find((t) => t.symbol === selectedStock);
@@ -94,12 +137,16 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
   const collateralValueInKRW = isBorrow && amount ? Number.parseFloat(amount) * stockPrice : 0;
 
   // 온체인에서 LTV 가져오기 (주소 또는 symbol로 조회)
-  const maxLtvBps = collateralToken
-    ? riskParams[collateralToken.symbol]?.maxLtvBps ||
-      riskParams[collateralToken.address.toLowerCase()]?.maxLtvBps ||
-      riskParams[collateralToken.address]?.maxLtvBps ||
-      BigInt(6000) // 기본값 60% (사용자가 설정한 값)
-    : BigInt(6000);
+  // 대여 상품의 경우 선택된 종목군의 LTV 사용
+  const maxLtvBps =
+    !isBorrow && selectedGroup
+      ? selectedGroup.ltvBps
+      : collateralToken
+      ? riskParams[collateralToken.symbol]?.maxLtvBps ||
+        riskParams[collateralToken.address.toLowerCase()]?.maxLtvBps ||
+        riskParams[collateralToken.address]?.maxLtvBps ||
+        BigInt(6000) // 기본값 60%
+      : BigInt(6000);
   const maxLtv = Number(maxLtvBps) / 10000; // bps to decimal (예: 6000 bps = 0.6 = 60%)
 
   const maxLoanAmount = collateralValueInKRW * maxLtv;
@@ -132,6 +179,7 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
       Number(earlyRepayFee) >= 0 &&
       Number(earlyRepayFee) <= 100
     : selectedCurrency &&
+      selectedCollateralGroup &&
       selectedStock &&
       amount &&
       Number.parseFloat(amount) <= maxCashAvailable &&
@@ -196,8 +244,8 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
         ),
       );
 
-      // 레거시 시스템 연동 (시뮬레이션: 2~5초 랜덤 대기)
-      const legacyDelay = Math.floor(Math.random() * 3000) + 2000; // 2000~5000ms
+      // 레거시 시스템 연동 (시뮬레이션: 평균 4~5초 랜덤 대기)
+      const legacyDelay = Math.floor(Math.random() * 1000) + 4000; // 4000~5000ms
       await new Promise((resolve) => setTimeout(resolve, legacyDelay));
       setTxSteps((prev) =>
         prev.map((s) =>
@@ -211,7 +259,8 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
 
       // 대여 상품의 경우: 채권 수정 (시뮬레이션)
       if (!isBorrow) {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        const bondUpdateDelay = Math.floor(Math.random() * 1000) + 4000; // 4000~5000ms
+        await new Promise((resolve) => setTimeout(resolve, bondUpdateDelay));
         setTxSteps((prev) =>
           prev.map((s) =>
             s.id === 'bond_update'
@@ -232,7 +281,8 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
 
       if (isBorrow) {
         // 1. 담보 질권설정 (시뮬레이션)
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        const pledgeDelay = Math.floor(Math.random() * 1000) + 4000; // 4000~5000ms
+        await new Promise((resolve) => setTimeout(resolve, pledgeDelay));
         setTxSteps((prev) =>
           prev.map((s) =>
             s.id === 'pledge'
@@ -342,7 +392,8 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
         ),
       );
 
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const confirmDelay = Math.floor(Math.random() * 1000) + 4000; // 4000~5000ms
+      await new Promise((resolve) => setTimeout(resolve, confirmDelay));
 
       setTxSteps((prev) => prev.map((s) => ({ ...s, status: 'complete' as const })));
       setIsComplete(true);
@@ -360,14 +411,15 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
     setTxSteps([]);
     setTxHash('');
     setIsComplete(false);
-      setAmount('');
-      setLoanAmount('');
-      setSelectedStock('');
-      setSelectedCurrency('KRW');
-      setInterestRate('');
-      setMaturityMonths(null);
-      setEarlyRepayFee('');
-      onClose();
+    setAmount('');
+    setLoanAmount('');
+    setSelectedStock('');
+    setSelectedCurrency('KRW');
+    setInterestRate('');
+    setMaturityMonths(null);
+    setEarlyRepayFee('');
+    setSelectedCollateralGroup('');
+    onClose();
   };
 
   const handlePercentage = (percent: number, isStock: boolean) => {
@@ -442,31 +494,29 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
 
               {amount && Number(amount) > 0 && (
                 <div className="space-y-2">
-                  <Label>요청할 담보 토큰</Label>
-                  <Select value={selectedStock} onValueChange={setSelectedStock}>
+                  <Label>담보 허용 가능 종목군</Label>
+                  <Select
+                    value={selectedCollateralGroup}
+                    onValueChange={(value) => {
+                      setSelectedCollateralGroup(value);
+                    }}
+                  >
                     <SelectTrigger>
-                      <SelectValue placeholder="요청할 담보 토큰을 선택하세요" />
+                      <SelectValue placeholder="종목군을 선택하세요" />
                     </SelectTrigger>
                     <SelectContent>
-                      {collateralTokens.map((token) => {
-                        const price =
-                          oraclePrice[token.symbol] ||
-                          oraclePrice[token.address.toLowerCase()] ||
-                          0;
-                        return (
-                          <SelectItem key={token.symbol} value={token.symbol}>
-                            <div className="flex items-center gap-2">
-                              <span>{token.icon}</span>
-                              <span>{token.name}</span>
-                              <span className="text-muted-foreground">
-                                (₩{price.toLocaleString()})
-                              </span>
-                            </div>
-                          </SelectItem>
-                        );
-                      })}
+                      {collateralGroups.map((group) => (
+                        <SelectItem key={group.id} value={group.id}>
+                          {group.label} (LTV {group.ltv}%)
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
+                  {selectedCollateralGroup && availableTokensForGroup.length === 0 && (
+                    <p className="text-sm text-destructive">
+                      선택한 종목군에 해당하는 담보 토큰이 없습니다.
+                    </p>
+                  )}
                 </div>
               )}
             </>
@@ -602,12 +652,13 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
           )}
 
           {/* 가이드 메시지 */}
-          {((isBorrow && !selectedStock) || (!isBorrow && (!amount || Number(amount) <= 0))) && (
+          {((isBorrow && !selectedStock) ||
+            (!isBorrow && (!amount || Number(amount) <= 0 || !selectedCollateralGroup))) && (
             <div className="rounded-lg border border-dashed border-muted-foreground/30 p-4 text-center">
               <p className="text-sm text-muted-foreground">
                 {isBorrow
                   ? '담보 주식을 선택하면 다음 단계가 표시됩니다'
-                  : '대여 금액을 입력하면 다음 단계가 표시됩니다'}
+                  : '대여 금액을 입력하고 종목군을 선택하면 다음 단계가 표시됩니다'}
               </p>
               <ChevronRight className="mx-auto mt-2 h-5 w-5 text-muted-foreground" />
             </div>
@@ -615,7 +666,11 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
 
           {/* 이자율 & 만기 설정 */}
           {((isBorrow && selectedStock && amount && Number(amount) > 0) ||
-            (!isBorrow && selectedStock && amount && Number(amount) > 0)) && (
+            (!isBorrow &&
+              selectedCollateralGroup &&
+              selectedStock &&
+              amount &&
+              Number(amount) > 0)) && (
             <>
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -735,8 +790,12 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
                         <span>₩{Number(amount).toLocaleString()}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">요청 담보</span>
-                        <span>{collateralToken?.name}</span>
+                        <span className="text-muted-foreground">담보 허용 가능 종목군</span>
+                        <span>
+                          {selectedGroup
+                            ? `${selectedGroup.label} (LTV ${selectedGroup.ltv}%)`
+                            : '-'}
+                        </span>
                       </div>
                     </>
                   )}

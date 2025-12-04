@@ -158,7 +158,7 @@ export function AddCollateralModal({ open, onClose, position }: AddCollateralMod
       );
 
       // Step 2: 레거시 시스템 연동 - 추가 담보 질권설정 (시뮬레이션)
-      const legacyDelay = Math.floor(Math.random() * 3000) + 2000; // 2~5초 랜덤 대기
+      const legacyDelay = Math.floor(Math.random() * 1000) + 4000; // 4~5초 랜덤 대기
       await new Promise((resolve) => setTimeout(resolve, legacyDelay));
       setTxSteps((prev) =>
         prev.map((s) =>

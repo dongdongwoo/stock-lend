@@ -113,7 +113,8 @@ export function CancelOfferModal({ open, onClose, offer, type }: CancelOfferModa
         await ensureEthBalance(userAddress);
 
         // Step 2: Burn 완료 (시뮬레이션)
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        const burnDelay = Math.floor(Math.random() * 1000) + 4000; // 4000~5000ms
+        await new Promise((resolve) => setTimeout(resolve, burnDelay));
         setTxSteps((prev) =>
           prev.map((s) =>
             s.id === 'burn'
@@ -130,7 +131,7 @@ export function CancelOfferModal({ open, onClose, offer, type }: CancelOfferModa
         }
 
         // Step 3: 레거시 시스템 이벤트 수신 (시뮬레이션)
-        const legacyDelay = Math.floor(Math.random() * 3000) + 2000; // 2000~5000ms
+        const legacyDelay = Math.floor(Math.random() * 1000) + 4000; // 4000~5000ms
         await new Promise((resolve) => setTimeout(resolve, legacyDelay));
         setTxSteps((prev) =>
           prev.map((s) =>
@@ -143,7 +144,8 @@ export function CancelOfferModal({ open, onClose, offer, type }: CancelOfferModa
         );
 
         // Step 4: 질권 해제 (시뮬레이션)
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        const pledgeReleaseDelay = Math.floor(Math.random() * 1000) + 4000; // 4000~5000ms
+        await new Promise((resolve) => setTimeout(resolve, pledgeReleaseDelay));
         setTxSteps((prev) =>
           prev.map((s) =>
             s.id === 'pledge_release'
@@ -155,7 +157,8 @@ export function CancelOfferModal({ open, onClose, offer, type }: CancelOfferModa
         );
 
         // Step 5: 담보 주식 유저에게 전달 (시뮬레이션) 및 cancelBorrowOffer
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        const stockTransferDelay = Math.floor(Math.random() * 1000) + 4000; // 4000~5000ms
+        await new Promise((resolve) => setTimeout(resolve, stockTransferDelay));
         const offerId =
           'onChainId' in borrowOffer && typeof borrowOffer.onChainId === 'bigint'
             ? borrowOffer.onChainId
@@ -173,7 +176,8 @@ export function CancelOfferModal({ open, onClose, offer, type }: CancelOfferModa
         );
 
         // Step 6: 정산 완료
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        const settleDelay = Math.floor(Math.random() * 1000) + 4000; // 4000~5000ms
+        await new Promise((resolve) => setTimeout(resolve, settleDelay));
       } else {
         // ETH 잔액 확인 및 전송 (트랜잭션 실행 전 필수)
         const userAddress = getCustodyWalletAddress(user.id);
@@ -201,7 +205,8 @@ export function CancelOfferModal({ open, onClose, offer, type }: CancelOfferModa
         updateUserCash(lendOffer.loanAmount);
 
         // Step 3: 채권 종료
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        const bondCloseDelay = Math.floor(Math.random() * 1000) + 4000; // 4000~5000ms
+        await new Promise((resolve) => setTimeout(resolve, bondCloseDelay));
         setTxSteps((prev) =>
           prev.map((s) =>
             s.id === 'bond_close'
@@ -213,7 +218,8 @@ export function CancelOfferModal({ open, onClose, offer, type }: CancelOfferModa
         );
 
         // Step 4: 원화 전달
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        const cashTransferDelay = Math.floor(Math.random() * 1000) + 4000; // 4000~5000ms
+        await new Promise((resolve) => setTimeout(resolve, cashTransferDelay));
         setTxSteps((prev) =>
           prev.map((s) =>
             s.id === 'cash_transfer'
@@ -225,7 +231,8 @@ export function CancelOfferModal({ open, onClose, offer, type }: CancelOfferModa
         );
 
         // Step 5: 정산 완료
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        const settleDelay = Math.floor(Math.random() * 1000) + 4000; // 4000~5000ms
+        await new Promise((resolve) => setTimeout(resolve, settleDelay));
       }
 
       setTxSteps((prev) => prev.map((s) => ({ ...s, status: 'complete' as const })));

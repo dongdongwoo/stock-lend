@@ -210,7 +210,7 @@ function OnChainPositionCard({
   // 온체인에서 가져온 토큰 목록
   const collateralTokens = mapCollateralTokens(collateralTokenAddresses);
 
-  // 온체인 principalDebt 조회
+  // 온체인 principalDebt 및 state 조회
   const { data: borrowOfferData } = useReadContract({
     address: CONTRACTS.lending,
     abi: lendingAbi,
@@ -223,8 +223,14 @@ function OnChainPositionCard({
     },
   });
 
-  // 온체인 데이터 파싱 (principalDebt)
+  // 온체인 데이터 파싱 (principalDebt, state)
+  // 실제 컨트랙트 BorrowOffer struct 순서:
+  // id(0), borrower(1), lender(2), collateralToken(3), lendToken(4),
+  // collateralAmount(5), loanAmount(6), principalDebt(7), interestRateBps(8),
+  // duration(9), createdAt(10), matchedAt(11), expiresAt(12),
+  // lastInterestTimestamp(13), earlyRepayFeeBps(14), interestPaid(15), state(16)
   let principalDebtValue: bigint = BigInt(0);
+  let onChainState: number = 2; // 기본값: Matched (2)
   if (borrowOfferData) {
     try {
       if (Array.isArray(borrowOfferData)) {
@@ -233,18 +239,30 @@ function OnChainPositionCard({
           principalDebtRaw !== undefined && principalDebtRaw !== null
             ? BigInt(principalDebtRaw)
             : BigInt(0);
+        // state는 인덱스 16
+        const stateRaw = (borrowOfferData as any)[16];
+        onChainState =
+          stateRaw !== undefined && stateRaw !== null ? Number(stateRaw) : 2;
       } else {
         const principalDebtRaw = (borrowOfferData as any).principalDebt;
         principalDebtValue =
           principalDebtRaw !== undefined && principalDebtRaw !== null
             ? BigInt(principalDebtRaw)
             : BigInt(0);
+        const stateRaw = (borrowOfferData as any).state;
+        onChainState =
+          stateRaw !== undefined && stateRaw !== null ? Number(stateRaw) : 2;
       }
     } catch (error) {
       console.error('Error parsing borrowOfferData:', error);
       principalDebtValue = BigInt(0);
+      onChainState = 2;
     }
   }
+
+  // 온체인 상태 확인: Matched(2)가 아니면 표시하지 않음
+  // Closed(3), Liquidated(5) 등은 필터링
+  const isActiveOnChain = onChainState === 2; // Matched = 2
 
   const onChainPrincipalDebt =
     principalDebtValue > BigInt(0)
@@ -275,8 +293,8 @@ function OnChainPositionCard({
       ? debtValue / (position.collateralAmount * liquidationThreshold)
       : 0;
 
-  const isLiquidatable = healthFactor < 1.0 && position.status === 'open';
-  const isAtRisk = healthFactor < 1.2 && position.status === 'open';
+  const isLiquidatable = healthFactor < 1.0 && position.status === 'open' && isActiveOnChain;
+  const isAtRisk = healthFactor < 1.2 && position.status === 'open' && isActiveOnChain;
 
   // 이전 상태를 추적하여 실제로 변경된 경우에만 호출
   const prevStatusRef = useRef<{ isLiquidatable: boolean; isAtRisk: boolean } | null>(null);
@@ -293,6 +311,11 @@ function OnChainPositionCard({
       onStatusChange(position.id, isLiquidatable, isAtRisk);
     }
   }, [position.id, isLiquidatable, isAtRisk]); // onStatusChange를 의존성에서 제거
+
+  // 온체인에서 종료된 포지션은 표시하지 않음
+  if (!isActiveOnChain) {
+    return null;
+  }
 
   return (
     <Card className={isAtRisk ? 'border-warning' : ''}>
