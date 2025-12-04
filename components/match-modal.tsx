@@ -424,6 +424,12 @@ export function MatchModal({ open, onClose, offer, type }: MatchModalProps) {
                 <span className="text-muted-foreground">만기</span>
                 <span>{offer.maturityDays}일</span>
               </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">중도상환수수료</span>
+                <span className="font-medium">
+                  {offer.earlyRepayFeeBps ? (offer.earlyRepayFeeBps / 100).toFixed(1) : '0'}%
+                </span>
+              </div>
               {isBorrowOffer && (
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">LTV</span>

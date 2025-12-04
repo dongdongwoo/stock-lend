@@ -21,6 +21,7 @@ export interface UIBorrowOffer {
   principalDebt: number;
   accruedInterest: number;
   healthFactor: number;
+  earlyRepayFeeBps: number; // 중도상환수수료 (basis points, 100 = 1%)
 }
 
 export interface UILendOffer {
@@ -42,5 +43,6 @@ export interface UILendOffer {
   matchedAt?: number;
   expiresAt?: number;
   borrowOfferId?: bigint; // 매칭된 BorrowOffer ID (takeLendOffer로 생성된 경우)
+  earlyRepayFeeBps: number; // 중도상환수수료 (basis points, 100 = 1%)
 }
 

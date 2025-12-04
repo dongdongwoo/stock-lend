@@ -94,6 +94,13 @@ function transformBorrowOffer(offer: any): UIBorrowOffer {
 
   const stateNum = Number(stateValue);
 
+  // earlyRepayFeeBps 파싱 (인덱스 14 또는 필드명으로 접근)
+  let earlyRepayFeeBpsValue = offer.earlyRepayFeeBps;
+  if (earlyRepayFeeBpsValue === undefined && Array.isArray(offer) && offer[14] !== undefined) {
+    earlyRepayFeeBpsValue = offer[14];
+  }
+  const earlyRepayFeeBps = earlyRepayFeeBpsValue !== undefined ? Number(earlyRepayFeeBpsValue) : 0;
+
   return {
     id: offer.id.toString(),
     onChainId: offer.id,
@@ -116,6 +123,7 @@ function transformBorrowOffer(offer: any): UIBorrowOffer {
     principalDebt: formatTokenAmount(offer.principalDebt),
     accruedInterest: 0,
     healthFactor: 0,
+    earlyRepayFeeBps,
   };
 }
 
@@ -157,6 +165,13 @@ function transformLendOffer(offer: any): UILendOffer {
 
   const stateNum = Number(stateValue);
 
+  // earlyRepayFeeBps 파싱 (인덱스 8 또는 필드명으로 접근)
+  let earlyRepayFeeBpsValue = offer.earlyRepayFeeBps;
+  if (earlyRepayFeeBpsValue === undefined && Array.isArray(offer) && offer[8] !== undefined) {
+    earlyRepayFeeBpsValue = offer[8];
+  }
+  const earlyRepayFeeBps = earlyRepayFeeBpsValue !== undefined ? Number(earlyRepayFeeBpsValue) : 0;
+
   return {
     id: offer.id.toString(),
     onChainId: offer.id,
@@ -177,6 +192,7 @@ function transformLendOffer(offer: any): UILendOffer {
     matchedAt: offer.matchedAt > BigInt(0) ? Number(offer.matchedAt) * 1000 : undefined,
     expiresAt: offer.expiresAt > BigInt(0) ? Number(offer.expiresAt) * 1000 : undefined,
     borrowOfferId: offer.borrowOfferId !== undefined && offer.borrowOfferId > BigInt(0) ? offer.borrowOfferId : undefined,
+    earlyRepayFeeBps,
   };
 }
 

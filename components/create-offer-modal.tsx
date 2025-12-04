@@ -47,6 +47,7 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
   const [interestRate, setInterestRate] = useState('');
   const [maturityMonths, setMaturityMonths] = useState<number | null>(null);
   const [loanAmount, setLoanAmount] = useState('');
+  const [earlyRepayFee, setEarlyRepayFee] = useState('');
 
   const [showTx, setShowTx] = useState(false);
   const [txSteps, setTxSteps] = useState<TxStep[]>([]);
@@ -80,6 +81,7 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
       setLoanAmount('');
       setInterestRate('');
       setMaturityMonths(null);
+      setEarlyRepayFee('');
       setTxError(null);
     }
   }, [open]);
@@ -125,7 +127,10 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
       isLtvValid &&
       interestRate &&
       Number(interestRate) > 0 &&
-      maturityMonths !== null
+      maturityMonths !== null &&
+      earlyRepayFee !== '' &&
+      Number(earlyRepayFee) >= 0 &&
+      Number(earlyRepayFee) <= 100
     : selectedCurrency &&
       selectedStock &&
       amount &&
@@ -133,7 +138,10 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
       Number.parseFloat(amount) > 0 &&
       interestRate &&
       Number(interestRate) > 0 &&
-      maturityMonths !== null;
+      maturityMonths !== null &&
+      earlyRepayFee !== '' &&
+      Number(earlyRepayFee) >= 0 &&
+      Number(earlyRepayFee) <= 100;
 
   const handleSubmit = async () => {
     if (!user || !isValid || !collateralToken) return;
@@ -220,7 +228,7 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
       const loanAmountInWei = isBorrow ? parseUnits(loanAmount, 18) : amountInWei;
       const interestRateBps = BigInt(Math.round(Number(interestRate) * 100)); // % to bps
       const duration = getMaturitySeconds();
-      const earlyRepayFeeBps = BigInt(100); // 1% 조기상환 수수료
+      const earlyRepayFeeBps = BigInt(Math.round(Number(earlyRepayFee) * 100)); // % to bps
 
       if (isBorrow) {
         // 1. 담보 질권설정 (시뮬레이션)
@@ -352,13 +360,14 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
     setTxSteps([]);
     setTxHash('');
     setIsComplete(false);
-    setAmount('');
-    setLoanAmount('');
-    setSelectedStock('');
-    setSelectedCurrency('KRW');
-    setInterestRate('');
-    setMaturityMonths(null);
-    onClose();
+      setAmount('');
+      setLoanAmount('');
+      setSelectedStock('');
+      setSelectedCurrency('KRW');
+      setInterestRate('');
+      setMaturityMonths(null);
+      setEarlyRepayFee('');
+      onClose();
   };
 
   const handlePercentage = (percent: number, isStock: boolean) => {
@@ -661,6 +670,43 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
                 </div>
               </div>
 
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label>중도상환수수료</Label>
+                  <span className="font-mono text-sm font-medium">
+                    {earlyRepayFee !== '' ? `${Number(earlyRepayFee).toFixed(1)}%` : '-'}
+                  </span>
+                </div>
+                <div className="relative">
+                  <Input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="100"
+                    placeholder="0"
+                    value={earlyRepayFee}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === '') {
+                        setEarlyRepayFee('');
+                      } else {
+                        const numVal = Number.parseFloat(val);
+                        if (!isNaN(numVal) && numVal >= 0 && numVal <= 100) {
+                          setEarlyRepayFee(val);
+                        }
+                      }
+                    }}
+                    className="pr-8"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                    %
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  만기 전 상환 시 원금 대비 수수료 (0% ~ 100% 범위에서 설정 가능)
+                </p>
+              </div>
+
               {/* 요약 */}
               <div className="rounded-lg bg-secondary p-4">
                 <h4 className="mb-2 text-sm font-medium">요약</h4>
@@ -703,6 +749,10 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
                     <span>
                       {maturityOptions.find((o) => o.months === maturityMonths)?.label || '-'}
                     </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">중도상환수수료</span>
+                    <span>{earlyRepayFee || 0}%</span>
                   </div>
                 </div>
               </div>
