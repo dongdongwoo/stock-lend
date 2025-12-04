@@ -51,6 +51,7 @@ export interface LendOffer {
   createdAt: bigint;
   matchedAt: bigint;
   expiresAt: bigint;
+  borrowOfferId: bigint; // 매칭된 BorrowOffer ID (takeLendOffer로 생성된 경우)
   state: number;
   earlyRepayFeeBps: bigint;
 }
@@ -59,6 +60,16 @@ export interface RiskParams {
   maxLtvBps: bigint;
   liquidationBps: bigint;
   liquidationPenaltyBps: bigint;
+}
+
+export interface LiquidationInfo {
+  liquidatedAt: bigint;
+  collateralReturned: bigint;
+  liquidator: `0x${string}`;
+  collateralToken: `0x${string}`;
+  lendToken: `0x${string}`;
+  debtRepaid: bigint;
+  collateralSeized: bigint;
 }
 
 // ============ Read Functions ============
@@ -144,6 +155,28 @@ export async function getCollateralRiskParams(token: `0x${string}`): Promise<Ris
     args: [token],
   });
   return { maxLtvBps, liquidationBps, liquidationPenaltyBps };
+}
+
+// 청산 정보 조회
+export async function getLiquidationInfo(borrowOfferId: bigint): Promise<LiquidationInfo> {
+  const result = await publicClient.readContract({
+    address: CONTRACTS.lending,
+    abi: lendingAbi,
+    functionName: 'getLiquidationInfo',
+    args: [borrowOfferId],
+  });
+  return result as unknown as LiquidationInfo;
+}
+
+// 사용자의 청산된 borrowOfferId 목록 조회
+export async function getUserLiquidations(user: `0x${string}`): Promise<bigint[]> {
+  const result = await publicClient.readContract({
+    address: CONTRACTS.lending,
+    abi: lendingAbi,
+    functionName: 'getUserLiquidations',
+    args: [user],
+  });
+  return result as unknown as bigint[];
 }
 
 // ============ Viewer Functions ============

@@ -95,8 +95,9 @@ function transformLendOffer(offer: any): UILendOffer {
 
   let stateValue = offer.state;
   if (stateValue === undefined || stateValue === null || Number(stateValue) === 0) {
-    if (Array.isArray(offer) && offer[13] !== undefined) {
-      stateValue = offer[13];
+    // 배열인 경우 인덱스로 접근 시도 (state는 14번째, 인덱스 14)
+    if (Array.isArray(offer) && offer[14] !== undefined) {
+      stateValue = offer[14];
     }
     if (stateValue === undefined || stateValue === null || Number(stateValue) === 0) {
       stateValue = 1;
@@ -124,6 +125,7 @@ function transformLendOffer(offer: any): UILendOffer {
     createdAt: Number(offer.createdAt) * 1000,
     matchedAt: offer.matchedAt > BigInt(0) ? Number(offer.matchedAt) * 1000 : undefined,
     expiresAt: offer.expiresAt > BigInt(0) ? Number(offer.expiresAt) * 1000 : undefined,
+    borrowOfferId: offer.borrowOfferId !== undefined && offer.borrowOfferId > BigInt(0) ? offer.borrowOfferId : undefined,
   };
 }
 

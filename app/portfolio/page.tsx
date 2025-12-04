@@ -31,6 +31,7 @@ import {
   useBorrowOffersWagmi,
   useLendOffersWagmi,
   useAllowedCollateralTokensWagmi,
+  useUserLiquidations,
   type UIBorrowOffer,
   type UILendOffer,
 } from '@/lib/hooks';
@@ -143,6 +144,9 @@ export default function PortfolioPage() {
   // 내가 borrower로서 대여 상품에 매칭한 경우
   const { positions: borrowerLendPositions } = useBorrowerLendPositions(OfferState.None);
 
+  // 청산 히스토리 조회
+  const { liquidations: userLiquidations } = useUserLiquidations();
+
   // 내 오퍼 필터링
   const myBorrowOffers = walletAddress
     ? allBorrowOffers.filter(
@@ -251,9 +255,6 @@ export default function PortfolioPage() {
 
   const matchedLendPositions = lenderPositions.filter((p) => p.status === 'matched');
   const closedLendPositions = lenderPositions.filter((p) => p.status === 'closed');
-
-  // 모든 청산된 포지션 (대출자/대여자 모두)
-  const liquidatedPositions = [...liquidatedBorrowPositions];
   const [showLogin, setShowLogin] = useState(false);
   const [showBuy, setShowBuy] = useState(false);
   const [editBorrowOffer, setEditBorrowOffer] = useState<BorrowOffer | null>(null);
@@ -372,7 +373,7 @@ export default function PortfolioPage() {
                 </TabsTrigger>
                 <TabsTrigger value="liquidations" className="gap-2">
                   <AlertTriangle className="h-4 w-4" />
-                  청산 히스토리 ({liquidatedPositions.length})
+                  청산 히스토리 ({userLiquidations.length})
                 </TabsTrigger>
               </TabsList>
 
@@ -658,7 +659,7 @@ export default function PortfolioPage() {
 
               {/* 청산 히스토리 탭 */}
               <TabsContent value="liquidations">
-                {liquidatedPositions.length === 0 ? (
+                {userLiquidations.length === 0 ? (
                   <Card>
                     <CardContent className="flex flex-col items-center justify-center py-12">
                       <AlertTriangle className="mb-4 h-12 w-12 text-muted-foreground" />
@@ -668,27 +669,17 @@ export default function PortfolioPage() {
                   </Card>
                 ) : (
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    {liquidatedPositions.map((position) => {
-                      // UIBorrowOffer 타입인지 확인
-                      const isBorrowOffer = 'collateralStock' in position;
-                      const collateralStock = isBorrowOffer
-                        ? (position as UIBorrowOffer).collateralStock
-                        : (position as UILendOffer).requestedCollateralStock;
-                      const token = collateralTokens.find((t) => t.symbol === collateralStock);
-                      const borrower = isBorrowOffer
-                        ? (position as UIBorrowOffer).borrower
-                        : (position as UILendOffer).borrower;
+                    {userLiquidations.map((liquidation) => {
+                      const token = collateralTokens.find(
+                        (t) => t.symbol === liquidation.collateralStock,
+                      );
                       const isBorrower =
-                        walletAddress && borrower && borrower.toLowerCase() === walletAddress;
-                      const accruedInterest = isBorrowOffer
-                        ? (position as UIBorrowOffer).accruedInterest || 0
-                        : 0;
+                        walletAddress &&
+                        liquidation.borrower &&
+                        liquidation.borrower.toLowerCase() === walletAddress;
                       return (
                         <Card
-                          key={
-                            (position as UIBorrowOffer | UILendOffer).onChainId?.toString() ||
-                            position.id
-                          }
+                          key={liquidation.borrowOfferId.toString()}
                           className="border-red-500/30 bg-red-500/5"
                         >
                           <CardContent className="p-4">
@@ -700,25 +691,52 @@ export default function PortfolioPage() {
                             </div>
                             <div className="space-y-2">
                               <div className="flex justify-between">
-                                <span className="text-muted-foreground">담보</span>
-                                <span className="font-medium">
-                                  {position.collateralAmount.toLocaleString()}주 {token?.name}
+                                <span className="text-muted-foreground">청산 일시</span>
+                                <span className="text-sm font-medium">
+                                  {new Date(liquidation.liquidatedAt).toLocaleString('ko-KR')}
                                 </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-muted-foreground">담보</span>
+                                <span className="font-medium">{token?.name}</span>
                               </div>
                               <div className="flex justify-between">
                                 <span className="text-muted-foreground">대출금</span>
                                 <span className="font-medium">
-                                  ₩{position.loanAmount.toLocaleString()}
+                                  ₩{liquidation.loanAmount.toLocaleString()}
                                 </span>
                               </div>
-                              {isBorrowOffer && (
+                              <div className="flex justify-between">
+                                <span className="text-muted-foreground">
+                                  상환된 부채 (이자 포함)
+                                </span>
+                                <span className="font-medium">
+                                  ₩{liquidation.debtRepaid.toLocaleString()}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-muted-foreground">압류된 담보</span>
+                                <span className="font-medium">
+                                  {liquidation.collateralSeized.toLocaleString()}주
+                                </span>
+                              </div>
+                              {liquidation.collateralReturned > 0 && (
                                 <div className="flex justify-between">
-                                  <span className="text-muted-foreground">청산 시점 이자</span>
-                                  <span className="font-medium">
-                                    ₩{accruedInterest.toLocaleString()}
+                                  <span className="text-muted-foreground">반환된 담보</span>
+                                  <span className="font-medium text-green-600">
+                                    {liquidation.collateralReturned.toLocaleString()}주
                                   </span>
                                 </div>
                               )}
+                              <div className="mt-2 border-t pt-2">
+                                <div className="flex justify-between text-xs text-muted-foreground">
+                                  <span>청산자</span>
+                                  <span className="font-mono">
+                                    {liquidation.liquidator.slice(0, 6)}...
+                                    {liquidation.liquidator.slice(-4)}
+                                  </span>
+                                </div>
+                              </div>
                             </div>
                           </CardContent>
                         </Card>

@@ -41,5 +41,6 @@ export interface UILendOffer {
   createdAt: number;
   matchedAt?: number;
   expiresAt?: number;
+  borrowOfferId?: bigint; // 매칭된 BorrowOffer ID (takeLendOffer로 생성된 경우)
 }
 

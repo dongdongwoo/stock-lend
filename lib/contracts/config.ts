@@ -17,11 +17,11 @@ export const GIWA_TESTNET = {
 
 // 컨트랙트 주소
 export const CONTRACTS = {
-  oracle: '0x1722c8e87e3FEd56C52E0a90d3AC8a13917Db2C7' as `0x${string}`,
-  collateralToken: '0x54FBA2bb8A4B6AeEdc28273e42aB570BbFA7bc63' as `0x${string}`, // 한화
-  lendToken: '0x47a6ab437e3091B05984b4d0aBD26BE647a2Db29' as `0x${string}`, // 원화 S.C (dKRW)
-  lending: '0xB0B74258DE452a9b52529C9431d0C29874deAb5b' as `0x${string}`,
-  lendingViewer: '0xe113e8Cc63f6BbF72fFB85e74b414cc6C60b0ba2' as `0x${string}`,
+  oracle: '0xe57a9A92090D4cF7832f5326EeBAc4867B9521c3' as `0x${string}`,
+  collateralToken: '0xD26E69DA91a33735aB3B3EC83475B24ED74Be1ff' as `0x${string}`, // 한화
+  lendToken: '0x557Cfb3FE5824f79cb761324Dd70d53d1D55f356' as `0x${string}`, // 원화 S.C (dKRW)
+  lending: '0xf14A98F868066D7c4448F2141739Bde66738D711' as `0x${string}`,
+  lendingViewer: '0x526c81c4cCF9EdABE2D68ca147737eDCD4c8029e' as `0x${string}`,
 } as const;
 
 // 토큰 주소 → UI 심볼 매핑

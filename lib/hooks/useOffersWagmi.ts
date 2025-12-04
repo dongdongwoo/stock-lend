@@ -127,7 +127,7 @@ function transformLendOffer(offer: any): UILendOffer {
   // state 필드 접근: 필드 이름 또는 인덱스로 접근 시도
   // 실제 컨트랙트 순서: id(0), lender(1), borrower(2), collateralToken(3), lendToken(4),
   // collateralAmount(5), loanAmount(6), interestRateBps(7), earlyRepayFeeBps(8),
-  // duration(9), createdAt(10), matchedAt(11), expiresAt(12), state(13)
+  // duration(9), createdAt(10), matchedAt(11), expiresAt(12), borrowOfferId(13), state(14)
   let stateValue = offer.state;
 
   // state가 없거나 0인 경우 디버깅
@@ -139,14 +139,14 @@ function transformLendOffer(offer: any): UILendOffer {
       offerKeys: Object.keys(offer),
       isArray: Array.isArray(offer),
       offerLength: Array.isArray(offer) ? offer.length : undefined,
-      // 배열인 경우 인덱스로 접근 시도 (state는 13번째, 인덱스 13)
-      stateAtIndex13: Array.isArray(offer) ? offer[13] : undefined,
+      // 배열인 경우 인덱스로 접근 시도 (state는 14번째, 인덱스 14)
+      stateAtIndex14: Array.isArray(offer) ? offer[14] : undefined,
       fullOffer: offer,
     });
 
-    // 배열 형태인 경우 인덱스로 접근 시도 (state는 13번째, 인덱스 13)
-    if (Array.isArray(offer) && offer[13] !== undefined) {
-      stateValue = offer[13];
+    // 배열 형태인 경우 인덱스로 접근 시도 (state는 14번째, 인덱스 14)
+    if (Array.isArray(offer) && offer[14] !== undefined) {
+      stateValue = offer[14];
     }
 
     // state가 여전히 0이면 Active로 간주 (컨트랙트에서 Active로 설정했으므로)
@@ -176,6 +176,7 @@ function transformLendOffer(offer: any): UILendOffer {
     createdAt: Number(offer.createdAt) * 1000,
     matchedAt: offer.matchedAt > BigInt(0) ? Number(offer.matchedAt) * 1000 : undefined,
     expiresAt: offer.expiresAt > BigInt(0) ? Number(offer.expiresAt) * 1000 : undefined,
+    borrowOfferId: offer.borrowOfferId !== undefined && offer.borrowOfferId > BigInt(0) ? offer.borrowOfferId : undefined,
   };
 }
 

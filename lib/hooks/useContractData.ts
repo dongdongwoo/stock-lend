@@ -138,6 +138,7 @@ function transformLendOffer(offer: ContractLendOffer): UILendOffer {
     createdAt: Number(offer.createdAt) * 1000,
     matchedAt: offer.matchedAt > BigInt(0) ? Number(offer.matchedAt) * 1000 : undefined,
     expiresAt: offer.expiresAt > BigInt(0) ? Number(offer.expiresAt) * 1000 : undefined,
+    borrowOfferId: offer.borrowOfferId !== undefined && offer.borrowOfferId > BigInt(0) ? offer.borrowOfferId : undefined,
   };
 }
 
