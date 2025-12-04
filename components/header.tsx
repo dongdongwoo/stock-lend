@@ -115,14 +115,34 @@ export function Header() {
 
   return (
     <>
-      <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-md">
+      <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur-md shadow-sm">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4">
           <div className="flex items-center gap-8">
-            <Link href="/" className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-                <span className="text-sm font-bold text-primary-foreground">SL</span>
+            <Link href="/" className="flex items-center gap-3">
+              {/* 한화 로고 */}
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
+                <svg
+                  width="28"
+                  height="28"
+                  viewBox="0 0 28 28"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="text-primary-foreground"
+                >
+                  {/* 한화 로고 스타일 - H 문자 형태 */}
+                  <path
+                    d="M8 6V22M8 14H20M20 6V22"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
               </div>
-              <span className="text-lg font-semibold">StockLend</span>
+              <div className="flex flex-col">
+                <span className="text-lg font-bold text-primary">StockLend</span>
+                <span className="text-xs font-medium text-primary/80">한화투자증권</span>
+              </div>
             </Link>
 
             <nav className="hidden items-center gap-1 md:flex">
