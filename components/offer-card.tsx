@@ -66,10 +66,12 @@ export function OfferCard({
                 isBorrow ? "bg-orange-500/20 text-orange-500" : "bg-primary/20 text-primary"
               }`}
             >
-              {collateralToken?.icon ? (
+              {isBorrow ? (
+                <span className="text-lg">💰</span>
+              ) : collateralToken?.icon ? (
                 <TokenIcon icon={collateralToken.icon} name={collateralToken.name} size={24} />
               ) : (
-                <span className="text-lg">{isBorrow ? "📉" : "📈"}</span>
+                <span className="text-lg">💵</span>
               )}
             </div>
             <div>
