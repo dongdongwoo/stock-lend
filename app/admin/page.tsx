@@ -36,6 +36,8 @@ import {
   usePositionDataWagmi,
   useCollateralRiskParamsWagmi,
   useAllowedCollateralTokensWagmi,
+  useCategoriesWagmi,
+  useCategoryTokensWagmi,
 } from '@/lib/hooks';
 import { useReadContract } from 'wagmi';
 import { publicClient } from '@/lib/contracts/clients';
@@ -47,6 +49,7 @@ import { formatUnits } from 'viem';
 import type { UIBorrowOffer, UILendOffer } from '@/lib/hooks';
 import { mintTokenByMaster, approveTokenForLending } from '@/lib/contracts/tokens';
 import { getCustodyWalletAddress, ensureEthBalance } from '@/lib/wallet/custody';
+import { TokenIcon } from '@/components/token-icon';
 
 // 컨트랙트 데이터 조회 섹션
 function ContractDataSection() {
@@ -75,8 +78,65 @@ function ContractDataSection() {
             <span className="break-all sm:text-right">{CONTRACTS.lending}</span>
           </div>
           <div className="flex flex-col gap-1 sm:flex-row sm:justify-between">
-            <span className="text-muted-foreground shrink-0">Collateral Token (한화):</span>
-            <span className="break-all sm:text-right">{CONTRACTS.collateralToken}</span>
+            <span className="text-muted-foreground shrink-0">Lending Viewer:</span>
+            <span className="break-all sm:text-right">{CONTRACTS.lendingViewer}</span>
+          </div>
+          <div className="flex flex-col gap-1 sm:flex-row sm:justify-between">
+            <span className="text-muted-foreground shrink-0">Lending Config:</span>
+            <span className="break-all sm:text-right">{CONTRACTS.lendingConfig}</span>
+          </div>
+          <div className="border-t border-border pt-2 mt-2">
+            <p className="text-xs text-muted-foreground mb-2">담보 토큰 (A군):</p>
+            <div className="space-y-1 pl-2">
+              <div className="flex flex-col gap-1 sm:flex-row sm:justify-between">
+                <span className="text-muted-foreground shrink-0 text-xs">한화:</span>
+                <span className="break-all sm:text-right text-xs">
+                  {CONTRACTS.collateralTokenA1}
+                </span>
+              </div>
+              <div className="flex flex-col gap-1 sm:flex-row sm:justify-between">
+                <span className="text-muted-foreground shrink-0 text-xs">네이버:</span>
+                <span className="break-all sm:text-right text-xs">
+                  {CONTRACTS.collateralTokenA2}
+                </span>
+              </div>
+              <div className="flex flex-col gap-1 sm:flex-row sm:justify-between">
+                <span className="text-muted-foreground shrink-0 text-xs">두나무:</span>
+                <span className="break-all sm:text-right text-xs">
+                  {CONTRACTS.collateralTokenA3}
+                </span>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground mb-2 mt-3">담보 토큰 (B군):</p>
+            <div className="space-y-1 pl-2">
+              <div className="flex flex-col gap-1 sm:flex-row sm:justify-between">
+                <span className="text-muted-foreground shrink-0 text-xs">카카오:</span>
+                <span className="break-all sm:text-right text-xs">
+                  {CONTRACTS.collateralTokenB1}
+                </span>
+              </div>
+              <div className="flex flex-col gap-1 sm:flex-row sm:justify-between">
+                <span className="text-muted-foreground shrink-0 text-xs">엘지:</span>
+                <span className="break-all sm:text-right text-xs">
+                  {CONTRACTS.collateralTokenB2}
+                </span>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground mb-2 mt-3">담보 토큰 (C군):</p>
+            <div className="space-y-1 pl-2">
+              <div className="flex flex-col gap-1 sm:flex-row sm:justify-between">
+                <span className="text-muted-foreground shrink-0 text-xs">쿠팡:</span>
+                <span className="break-all sm:text-right text-xs">
+                  {CONTRACTS.collateralTokenC1}
+                </span>
+              </div>
+              <div className="flex flex-col gap-1 sm:flex-row sm:justify-between">
+                <span className="text-muted-foreground shrink-0 text-xs">위메이드:</span>
+                <span className="break-all sm:text-right text-xs">
+                  {CONTRACTS.collateralTokenC2}
+                </span>
+              </div>
+            </div>
           </div>
           <div className="flex flex-col gap-1 sm:flex-row sm:justify-between">
             <span className="text-muted-foreground shrink-0">Lend Token (dKRW):</span>
@@ -98,7 +158,7 @@ function ContractDataSection() {
               {collateralTokens.map((token) => (
                 <div key={token.address} className="flex items-center justify-between">
                   <span className="flex items-center gap-2">
-                    <span>{token.icon}</span>
+                    <TokenIcon icon={token.icon} name={token.name} size={20} />
                     <span>{token.name}</span>
                   </span>
                   <span className="font-mono">
@@ -188,11 +248,78 @@ function convertOfferToPosition(
   } as Position & { onChainId?: bigint };
 }
 
+// 활성 포지션 리스트 컴포넌트 (렌더링된 포지션만 카운트)
+function ActivePositionsList({
+  positions,
+  onLiquidate,
+  onStatusChange,
+  onCountChange,
+}: {
+  positions: (Position & { onChainId?: bigint })[];
+  onLiquidate: (
+    position: Position & { onChainId?: bigint },
+    data: { currentLoanAmount: number; accruedInterest: number; debtValue: number },
+  ) => void;
+  onStatusChange?: (positionId: string, isLiquidatable: boolean, isAtRisk: boolean) => void;
+  onCountChange?: (count: number) => void;
+}) {
+  const renderedPositionsRef = useRef<Set<string>>(new Set());
+  const positionsRef = useRef(positions);
+
+  // positions가 변경될 때마다 ref 업데이트
+  useEffect(() => {
+    positionsRef.current = positions;
+    // positions가 변경되면 Set을 초기화하고 다시 카운트
+    renderedPositionsRef.current.clear();
+    if (onCountChange) {
+      onCountChange(0);
+    }
+  }, [positions, onCountChange]);
+
+  const handleRender = useCallback(
+    (positionId: string, rendered: boolean) => {
+      const wasRendered = renderedPositionsRef.current.has(positionId);
+
+      if (rendered && !wasRendered) {
+        renderedPositionsRef.current.add(positionId);
+      } else if (!rendered && wasRendered) {
+        renderedPositionsRef.current.delete(positionId);
+      } else {
+        // 상태가 변경되지 않았으면 카운트 업데이트 불필요
+        return;
+      }
+
+      // 약간의 지연을 두고 카운트 업데이트 (모든 포지션이 렌더링된 후)
+      setTimeout(() => {
+        if (onCountChange) {
+          onCountChange(renderedPositionsRef.current.size);
+        }
+      }, 100);
+    },
+    [onCountChange],
+  );
+
+  return (
+    <div className="space-y-4">
+      {positions.map((position) => (
+        <OnChainPositionCard
+          key={position.id}
+          position={position}
+          onLiquidate={onLiquidate}
+          onStatusChange={onStatusChange}
+          onRender={(rendered) => handleRender(position.id, rendered)}
+        />
+      ))}
+    </div>
+  );
+}
+
 // 온체인 포지션 데이터를 조회하는 컴포넌트
 function OnChainPositionCard({
   position,
   onLiquidate,
   onStatusChange,
+  onRender,
 }: {
   position: Position & { onChainId?: bigint };
   onLiquidate: (
@@ -200,6 +327,7 @@ function OnChainPositionCard({
     data: { currentLoanAmount: number; accruedInterest: number; debtValue: number },
   ) => void;
   onStatusChange?: (positionId: string, isLiquidatable: boolean, isAtRisk: boolean) => void;
+  onRender?: (rendered: boolean) => void;
 }) {
   const { prices: onChainPrices } = useOraclePricesWagmi();
   const { riskParams } = useCollateralRiskParamsWagmi();
@@ -241,8 +369,7 @@ function OnChainPositionCard({
             : BigInt(0);
         // state는 인덱스 16
         const stateRaw = (borrowOfferData as any)[16];
-        onChainState =
-          stateRaw !== undefined && stateRaw !== null ? Number(stateRaw) : 2;
+        onChainState = stateRaw !== undefined && stateRaw !== null ? Number(stateRaw) : 2;
       } else {
         const principalDebtRaw = (borrowOfferData as any).principalDebt;
         principalDebtValue =
@@ -250,8 +377,7 @@ function OnChainPositionCard({
             ? BigInt(principalDebtRaw)
             : BigInt(0);
         const stateRaw = (borrowOfferData as any).state;
-        onChainState =
-          stateRaw !== undefined && stateRaw !== null ? Number(stateRaw) : 2;
+        onChainState = stateRaw !== undefined && stateRaw !== null ? Number(stateRaw) : 2;
       }
     } catch (error) {
       console.error('Error parsing borrowOfferData:', error);
@@ -312,6 +438,20 @@ function OnChainPositionCard({
     }
   }, [position.id, isLiquidatable, isAtRisk]); // onStatusChange를 의존성에서 제거
 
+  // 렌더링 여부를 상위 컴포넌트에 알림 (borrowOfferData가 로드된 후에만)
+  const prevIsActiveRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    // borrowOfferData가 로드되었고, isActiveOnChain이 변경되었을 때만 알림
+    if (onRender && borrowOfferData !== undefined) {
+      const currentIsActive = isActiveOnChain;
+      // 이전 값과 다를 때만 알림 (중복 호출 방지)
+      if (prevIsActiveRef.current !== currentIsActive) {
+        prevIsActiveRef.current = currentIsActive;
+        onRender(currentIsActive);
+      }
+    }
+  }, [isActiveOnChain, onRender, borrowOfferData]);
+
   // 온체인에서 종료된 포지션은 표시하지 않음
   if (!isActiveOnChain) {
     return null;
@@ -368,9 +508,15 @@ export default function AdminPage() {
 
   // 온체인 오라클 가격 조회 (wagmi)
   const { prices: onChainPrices } = useOraclePricesWagmi();
-  const { tokens: collateralTokenAddresses } = useAllowedCollateralTokensWagmi();
+  const { categories } = useCategoriesWagmi();
 
-  // 온체인에서 가져온 토큰 목록
+  // 선택된 카테고리
+  const [selectedCategoryId, setSelectedCategoryId] = useState<bigint | null>(null);
+  // 선택된 카테고리의 토큰 목록
+  const { tokens: availableTokens } = useCategoryTokensWagmi(selectedCategoryId);
+
+  // 전체 토큰 목록 (전체 가격 현황 표시용)
+  const { tokens: collateralTokenAddresses } = useAllowedCollateralTokensWagmi();
   const collateralTokens = mapCollateralTokens(collateralTokenAddresses);
 
   // 온체인 오퍼 조회 (대시보드용, wagmi)
@@ -380,11 +526,36 @@ export default function AdminPage() {
   // 온체인에서 matched 상태인 모든 포지션 조회
   const matchedBorrowOffers = onChainBorrowOffers.filter((o) => o.status === 'matched');
   const matchedLendOffers = onChainLendOffers.filter((o) => o.status === 'matched');
-  const allMatchedOffers = [...matchedBorrowOffers, ...matchedLendOffers];
 
-  // 중복 제거 (onChainId 기준)
+  // 중복 제거: 매칭된 거래는 하나의 포지션으로 처리
+  // BorrowOffer의 onChainId를 기준으로 포지션을 만들고,
+  // LendOffer의 borrowOfferId가 이미 처리된 BorrowOffer의 onChainId와 같으면 제외
   const positionMap = new Map<string, Position & { onChainId?: bigint }>();
-  allMatchedOffers.forEach((offer) => {
+
+  // 1. 먼저 BorrowOffer를 처리
+  matchedBorrowOffers.forEach((offer) => {
+    const position = convertOfferToPosition(offer);
+    if (position && position.onChainId) {
+      const key = position.onChainId.toString();
+      if (!positionMap.has(key)) {
+        positionMap.set(key, position);
+      }
+    }
+  });
+
+  // 2. LendOffer를 처리하되, borrowOfferId가 이미 처리된 BorrowOffer의 onChainId와 같으면 제외
+  matchedLendOffers.forEach((offer) => {
+    // borrowOfferId가 있으면 이미 BorrowOffer로 처리된 포지션이므로 제외
+    if (offer.borrowOfferId && offer.borrowOfferId > BigInt(0)) {
+      const borrowOfferKey = offer.borrowOfferId.toString();
+      // 이미 BorrowOffer로 처리된 포지션이 있으면 제외
+      if (positionMap.has(borrowOfferKey)) {
+        return; // 이미 처리된 포지션이므로 제외
+      }
+    }
+
+    // borrowOfferId가 없거나, 해당 BorrowOffer가 없는 경우에만 포지션으로 추가
+    // (이 경우는 LendOffer가 먼저 생성되고 나중에 매칭된 경우일 수 있음)
     const position = convertOfferToPosition(offer);
     if (position && position.onChainId) {
       const key = position.onChainId.toString();
@@ -395,6 +566,9 @@ export default function AdminPage() {
   });
 
   const openPositions = Array.from(positionMap.values()).filter((p) => p.status === 'open');
+
+  // 실제로 렌더링된 활성 포지션 수를 추적
+  const [renderedActivePositionsCount, setRenderedActivePositionsCount] = useState(0);
 
   // 각 포지션의 상태를 추적하기 위한 state
   const [positionStatuses, setPositionStatuses] = useState<
@@ -429,10 +603,25 @@ export default function AdminPage() {
 
   const [isAuthed, setIsAuthed] = useState(false);
   const [authCode, setAuthCode] = useState('');
-  const [selectedToken, setSelectedToken] = useState<`0x${string}`>(
-    (collateralTokens[0]?.address as `0x${string}`) || '0x',
-  );
+  const [selectedToken, setSelectedToken] = useState<`0x${string}` | null>(null);
   const [newPrice, setNewPrice] = useState('');
+
+  // 카테고리 변경 시 토큰 초기화
+  useEffect(() => {
+    if (selectedCategoryId !== null) {
+      setSelectedToken(null);
+      setNewPrice('');
+    }
+  }, [selectedCategoryId]);
+
+  // 카테고리 선택 시 첫 번째 토큰 자동 선택
+  useEffect(() => {
+    if (selectedCategoryId !== null && availableTokens.length > 0 && !selectedToken) {
+      setSelectedToken(availableTokens[0].address as `0x${string}`);
+      const price = onChainPrices[availableTokens[0].symbol] || 0;
+      setNewPrice(price.toString());
+    }
+  }, [selectedCategoryId, availableTokens, selectedToken, onChainPrices]);
 
   const [showTx, setShowTx] = useState(false);
   const [txSteps, setTxSteps] = useState<TxStep[]>([]);
@@ -445,7 +634,7 @@ export default function AdminPage() {
   const [isUpdatingPrice, setIsUpdatingPrice] = useState(false);
 
   // 선택된 토큰 정보
-  const selectedTokenInfo = collateralTokens.find((t) => t.address === selectedToken);
+  const selectedTokenInfo = availableTokens.find((t) => t.address === selectedToken);
 
   const handleAuth = () => {
     if (authCode === 'admin123') {
@@ -455,7 +644,7 @@ export default function AdminPage() {
 
   const handleTokenChange = (address: string) => {
     setSelectedToken(address as `0x${string}`);
-    const token = collateralTokens.find((t) => t.address === address);
+    const token = availableTokens.find((t) => t.address === address);
     if (token) {
       setNewPrice((onChainPrices[token.symbol] || 0).toString());
     }
@@ -566,12 +755,11 @@ export default function AdminPage() {
 
     const steps: TxStep[] = [
       { id: 'calculate', label: '원금+이자 재계산', status: 'active' },
-      { id: 'fund', label: '청산자 지갑 가스비 확보', status: 'pending' },
       { id: 'tokenize', label: 'dKRW 토큰화 (원리금+버퍼)', status: 'pending' },
       { id: 'approve', label: 'dKRW 토큰 Approve', status: 'pending' },
       { id: 'liquidate', label: '청산 트랜잭션 실행', status: 'pending' },
-      { id: 'legacy', label: '래거시 시스템 이벤트 수신', status: 'pending' },
       { id: 'collateral', label: '담보 토큰 Burn', status: 'pending' },
+      { id: 'legacy', label: '래거시 시스템 이벤트 수신', status: 'pending' },
       { id: 'pledge_release', label: '질권 해제', status: 'pending' },
       { id: 'stock_transfer', label: '담보 주식 매도', status: 'pending' },
       {
@@ -598,11 +786,15 @@ export default function AdminPage() {
     };
 
     try {
-      // Step 1: 가스비 확보
-      advanceStep('calculate', 'fund');
+      // ETH 잔액 확인 및 전송 (트랜잭션 실행 전 필수)
       await ensureEthBalance(userAddress);
 
-      // Step 2: 청산 전 Health Factor 확인 (청산 가능 여부 재확인)
+      // Step 1: 원금+이자 재계산 (시뮬레이션)
+      const calculateDelay = Math.floor(Math.random() * 1000) + 4000; // 4~5초 랜덤 대기
+      await new Promise((resolve) => setTimeout(resolve, calculateDelay));
+      advanceStep('calculate', 'tokenize');
+
+      // 청산 전 Health Factor 확인 (청산 가능 여부 재확인)
       // mint/approve 전에 확인하여 불필요한 트랜잭션 방지
       const currentHealthFactor = await publicClient.readContract({
         address: CONTRACTS.lending,
@@ -620,31 +812,48 @@ export default function AdminPage() {
         );
       }
 
-      // Step 3: dKRW 토큰화
-      advanceStep('fund', 'tokenize');
+      // Step 2: dKRW 토큰화 (원리금+버퍼) - 실제 트랜잭션
       await mintTokenByMaster('lend', userAddress, repayAmountInWei);
-
-      // Step 4: Approve
       advanceStep('tokenize', 'approve');
-      await approveTokenForLending('lend', repayAmountInWei, user.id);
 
-      // Step 5: 청산 트랜잭션 실행 (원리금 상환 + 담보 청산)
-      // approve 직후 바로 청산 호출하여 Health Factor가 변하기 전에 실행
+      // Step 3: dKRW 토큰 Approve - 실제 트랜잭션
+      await approveTokenForLending('lend', repayAmountInWei, user.id);
       advanceStep('approve', 'liquidate');
+
+      // Step 4: 청산 트랜잭션 실행 - 실제 트랜잭션
       const hash = await liquidate(position.onChainId, user.id);
       setTxHash(hash);
+      advanceStep('liquidate', 'collateral');
 
-      // Step 5 이후: 레거시 프로세스 시뮬레이션
-      advanceStep('liquidate', 'legacy');
-      const postSteps: Array<
-        'legacy' | 'collateral' | 'pledge_release' | 'stock_transfer' | 'cash_transfer' | 'tx'
-      > = ['legacy', 'collateral', 'pledge_release', 'stock_transfer', 'cash_transfer', 'tx'];
-      for (let i = 0; i < postSteps.length; i++) {
-        const current = postSteps[i];
-        const next = postSteps[i + 1];
-        await new Promise((resolve) => setTimeout(resolve, 800));
-        advanceStep(current, next);
-      }
+      // Step 5: 담보 토큰 Burn (시뮬레이션)
+      const collateralDelay = Math.floor(Math.random() * 1000) + 4000; // 4~5초 랜덤 대기
+      await new Promise((resolve) => setTimeout(resolve, collateralDelay));
+      advanceStep('collateral', 'legacy');
+
+      // Step 6: 래거시 시스템 이벤트 수신 (시뮬레이션)
+      const legacyDelay = Math.floor(Math.random() * 1000) + 4000; // 4~5초 랜덤 대기
+      await new Promise((resolve) => setTimeout(resolve, legacyDelay));
+      advanceStep('legacy', 'pledge_release');
+
+      // Step 7: 질권 해제 (시뮬레이션)
+      const pledgeReleaseDelay = Math.floor(Math.random() * 1000) + 4000; // 4~5초 랜덤 대기
+      await new Promise((resolve) => setTimeout(resolve, pledgeReleaseDelay));
+      advanceStep('pledge_release', 'stock_transfer');
+
+      // Step 8: 담보 주식 매도 (시뮬레이션)
+      const stockTransferDelay = Math.floor(Math.random() * 1000) + 4000; // 4~5초 랜덤 대기
+      await new Promise((resolve) => setTimeout(resolve, stockTransferDelay));
+      advanceStep('stock_transfer', 'cash_transfer');
+
+      // Step 9: 매도한 주식으로 받은 원화 분배 (청산자, 대출자) (시뮬레이션)
+      const cashTransferDelay = Math.floor(Math.random() * 1000) + 4000; // 4~5초 랜덤 대기
+      await new Promise((resolve) => setTimeout(resolve, cashTransferDelay));
+      advanceStep('cash_transfer', 'tx');
+
+      // Step 10: 정산 완료 (시뮬레이션)
+      const txDelay = Math.floor(Math.random() * 1000) + 4000; // 4~5초 랜덤 대기
+      await new Promise((resolve) => setTimeout(resolve, txDelay));
+      advanceStep('tx', undefined);
 
       updatePosition(position.id, {
         status: 'liquidated',
@@ -802,23 +1011,54 @@ export default function AdminPage() {
             <CardContent>
               <div className="flex flex-wrap items-end gap-4">
                 <div className="space-y-2">
-                  <Label>담보 토큰 선택</Label>
-                  <Select value={selectedToken} onValueChange={handleTokenChange}>
+                  <Label>종목군 선택</Label>
+                  <Select
+                    value={selectedCategoryId?.toString() || ''}
+                    onValueChange={(value) => {
+                      const categoryId = BigInt(value);
+                      setSelectedCategoryId(categoryId);
+                      setSelectedToken(null);
+                      setNewPrice('');
+                    }}
+                  >
                     <SelectTrigger className="w-56">
-                      <SelectValue />
+                      <SelectValue placeholder="종목군을 선택하세요" />
                     </SelectTrigger>
                     <SelectContent>
-                      {collateralTokens.map((token) => (
-                        <SelectItem key={token.address} value={token.address}>
-                          <div className="flex items-center gap-2">
-                            <span>{token.icon}</span>
-                            <span>{token.name}</span>
-                          </div>
+                      {categories.map((category) => (
+                        <SelectItem key={category.id.toString()} value={category.id.toString()}>
+                          {category.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
+                {selectedCategoryId && (
+                  <div className="space-y-2">
+                    <Label>담보 토큰 선택</Label>
+                    <Select value={selectedToken || ''} onValueChange={handleTokenChange}>
+                      <SelectTrigger className="w-56">
+                        <SelectValue placeholder="토큰을 선택하세요" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableTokens.length === 0 ? (
+                          <div className="p-2 text-sm text-muted-foreground">
+                            선택한 종목군에 토큰이 없습니다.
+                          </div>
+                        ) : (
+                          availableTokens.map((token) => (
+                            <SelectItem key={token.address} value={token.address}>
+                              <div className="flex items-center gap-2">
+                                <TokenIcon icon={token.icon} name={token.name} size={20} />
+                                <span>{token.name}</span>
+                              </div>
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
                 <div className="space-y-2">
                   <Label>새 가격 (KRW)</Label>
                   <Input
@@ -840,7 +1080,10 @@ export default function AdminPage() {
                     </span>
                   </div>
                 </div>
-                <Button onClick={handlePriceUpdate} disabled={isUpdatingPrice || !selectedToken}>
+                <Button
+                  onClick={handlePriceUpdate}
+                  disabled={isUpdatingPrice || !selectedToken || !selectedCategoryId}
+                >
                   {isUpdatingPrice ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   ) : (
@@ -856,7 +1099,7 @@ export default function AdminPage() {
                   {collateralTokens.map((token) => (
                     <div key={token.address} className="flex items-center justify-between text-sm">
                       <span className="flex items-center gap-2">
-                        <span>{token.icon}</span>
+                        <TokenIcon icon={token.icon} name={token.name} size={20} />
                         <span>{token.name}</span>
                         <span className="text-xs text-muted-foreground">({token.symbol})</span>
                       </span>
@@ -885,7 +1128,13 @@ export default function AdminPage() {
               <Database className="h-4 w-4" />
               컨트랙트 데이터
             </TabsTrigger>
-            <TabsTrigger value="positions">활성 포지션 관리 ({openPositions.length})</TabsTrigger>
+            <TabsTrigger value="positions">
+              활성 포지션 관리 (
+              {renderedActivePositionsCount > 0
+                ? renderedActivePositionsCount
+                : openPositions.length}
+              )
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="contract-data">
@@ -900,16 +1149,12 @@ export default function AdminPage() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="space-y-4">
-                {openPositions.map((position) => (
-                  <OnChainPositionCard
-                    key={position.id}
-                    position={position}
-                    onLiquidate={handleLiquidate}
-                    onStatusChange={handlePositionStatusChange}
-                  />
-                ))}
-              </div>
+              <ActivePositionsList
+                positions={openPositions}
+                onLiquidate={handleLiquidate}
+                onStatusChange={handlePositionStatusChange}
+                onCountChange={setRenderedActivePositionsCount}
+              />
             )}
           </TabsContent>
         </Tabs>

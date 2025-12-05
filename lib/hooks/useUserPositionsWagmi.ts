@@ -90,8 +90,9 @@ function transformBorrowOffer(offer: any): UIBorrowOffer {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function transformLendOffer(offer: any): UILendOffer {
-  const collateralToken = getCollateralTokenByAddress(offer.collateralToken);
-  const lendToken = getLendTokenByAddress(offer.lendToken);
+  // categoryId로 변경됨 (collateralToken → categoryId)
+  const categoryId = offer.categoryId || offer[3];
+  const lendToken = getLendTokenByAddress(offer.lendToken || offer[4]);
 
   let stateValue = offer.state;
   if (stateValue === undefined || stateValue === null || Number(stateValue) === 0) {
@@ -113,8 +114,9 @@ function transformLendOffer(offer: any): UILendOffer {
     lenderWallet: offer.lender,
     borrower:
       offer.borrower === '0x0000000000000000000000000000000000000000' ? null : offer.borrower,
-    requestedCollateralStock: collateralToken?.symbol || 'UNKNOWN',
-    collateralTokenAddress: offer.collateralToken,
+    requestedCollateralStock: offer.categoryId ? `종목군 ${offer.categoryId.toString()}` : 'UNKNOWN',
+    categoryId: offer.categoryId || BigInt(0),
+    collateralTokenAddress: null, // 매칭 전에는 null, 매칭 후에는 borrowOffer에서 가져와야 함
     collateralAmount: formatTokenAmount(offer.collateralAmount),
     loanCurrency: lendToken?.symbol || 'dKRW',
     lendTokenAddress: offer.lendToken,
@@ -143,15 +145,20 @@ export function useUserBorrowPositions(stateFilter: OfferState = OfferState.None
     args: walletAddress ? [walletAddress as `0x${string}`, stateFilter] : undefined,
     query: {
       enabled: !!walletAddress,
-      refetchInterval: 1500,
+      refetchInterval: 2000, // 2초마다 자동 갱신
       staleTime: 1000,
     },
   });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const rawData = data as any;
+  // 반환값이 { data: ... } 형태인 경우 처리
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const positionsArray: any[] = Array.isArray(rawData) ? rawData : rawData?.[0] || [];
+  const positionsArray: any[] = Array.isArray(rawData) 
+    ? rawData 
+    : rawData?.data 
+    ? rawData.data 
+    : rawData?.[0] || [];
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const positions: UIBorrowOffer[] = positionsArray.map(transformBorrowOffer);
@@ -176,15 +183,20 @@ export function useUserLendPositions(stateFilter: OfferState = OfferState.None) 
     args: walletAddress ? [walletAddress as `0x${string}`, stateFilter] : undefined,
     query: {
       enabled: !!walletAddress,
-      refetchInterval: 1500,
+      refetchInterval: 2000, // 2초마다 자동 갱신
       staleTime: 1000,
     },
   });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const rawData = data as any;
+  // 반환값이 { data: ... } 형태인 경우 처리
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const positionsArray: any[] = Array.isArray(rawData) ? rawData : rawData?.[0] || [];
+  const positionsArray: any[] = Array.isArray(rawData) 
+    ? rawData 
+    : rawData?.data 
+    ? rawData.data 
+    : rawData?.[0] || [];
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const positions: UILendOffer[] = positionsArray.map(transformLendOffer);
@@ -209,15 +221,20 @@ export function useLenderLoanPositions(stateFilter: OfferState = OfferState.None
     args: walletAddress ? [walletAddress as `0x${string}`, stateFilter] : undefined,
     query: {
       enabled: !!walletAddress,
-      refetchInterval: 1500,
+      refetchInterval: 2000, // 2초마다 자동 갱신
       staleTime: 1000,
     },
   });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const rawData = data as any;
+  // 반환값이 { data: ... } 형태인 경우 처리
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const positionsArray: any[] = Array.isArray(rawData) ? rawData : rawData?.[0] || [];
+  const positionsArray: any[] = Array.isArray(rawData) 
+    ? rawData 
+    : rawData?.data 
+    ? rawData.data 
+    : rawData?.[0] || [];
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const positions: UIBorrowOffer[] = positionsArray.map(transformBorrowOffer);
@@ -242,15 +259,20 @@ export function useBorrowerLendPositions(stateFilter: OfferState = OfferState.No
     args: walletAddress ? [walletAddress as `0x${string}`, stateFilter] : undefined,
     query: {
       enabled: !!walletAddress,
-      refetchInterval: 1500,
+      refetchInterval: 2000, // 2초마다 자동 갱신
       staleTime: 1000,
     },
   });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const rawData = data as any;
+  // 반환값이 { data: ... } 형태인 경우 처리
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const positionsArray: any[] = Array.isArray(rawData) ? rawData : rawData?.[0] || [];
+  const positionsArray: any[] = Array.isArray(rawData) 
+    ? rawData 
+    : rawData?.data 
+    ? rawData.data 
+    : rawData?.[0] || [];
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const positions: UILendOffer[] = positionsArray.map(transformLendOffer);

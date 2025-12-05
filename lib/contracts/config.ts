@@ -17,22 +17,46 @@ export const GIWA_TESTNET = {
 
 // 컨트랙트 주소
 export const CONTRACTS = {
-  oracle: '0xe57a9A92090D4cF7832f5326EeBAc4867B9521c3' as `0x${string}`,
-  collateralToken: '0xD26E69DA91a33735aB3B3EC83475B24ED74Be1ff' as `0x${string}`, // 한화
-  lendToken: '0x557Cfb3FE5824f79cb761324Dd70d53d1D55f356' as `0x${string}`, // 원화 S.C (dKRW)
-  lending: '0xf14A98F868066D7c4448F2141739Bde66738D711' as `0x${string}`,
-  lendingViewer: '0x526c81c4cCF9EdABE2D68ca147737eDCD4c8029e' as `0x${string}`,
+  oracle: '0xad6fFD94a89456a8172d73437b2543e6C2e782eD' as `0x${string}`,
+  // A군 담보토큰
+  collateralTokenA1: '0xD531414bb56a2B2eBB65388E9CB6609E32c44d80' as `0x${string}`, // 한화
+  collateralTokenA2: '0x4eDd339d44DC00A5B13d43e9e742252CD43a3Ad8' as `0x${string}`, // 네이버
+  collateralTokenA3: '0x74d8D3C387a6f19584938219d7F8fB892C199f50' as `0x${string}`, // 두나무
+  // B군 담보토큰
+  collateralTokenB1: '0xa490f88Ff8C497E5648f8B28d7706CfbD0cb738F' as `0x${string}`, // 카카오
+  collateralTokenB2: '0x7e2E39613ba814D7C8C9dA2c30b43e8651CbC3B4' as `0x${string}`, // 엘지
+  // C군 담보토큰
+  collateralTokenC1: '0xE32067a9EE975c9d56FF57Bb2326a441322aA036' as `0x${string}`, // 쿠팡
+  collateralTokenC2: '0x32e5Fc32FF1776e386aA83Ce76197bB32f046ED3' as `0x${string}`, // 위메이드
+  // 대여토큰
+  lendToken: '0x186E976A133d2592C0c1818Fdf4887d9A23329cD' as `0x${string}`, // 원화 S.C (dKRW)
+  // 컨트랙트
+  lending: '0xAbe1D4e3fFe6eCb49871A281cd477405CC2Cc3F9' as `0x${string}`,
+  lendingViewer: '0xD69120d1673443EF0DDF01328361Eef2A22E8476' as `0x${string}`,
+  lendingConfig: '0xe3133C0d090b47801098151861205985B06e0578' as `0x${string}`,
 } as const;
 
 // 토큰 주소 → UI 심볼 매핑
 export const TOKEN_ADDRESS_TO_SYMBOL: Record<string, string> = {
-  [CONTRACTS.collateralToken.toLowerCase()]: 'HANHWA',
+  [CONTRACTS.collateralTokenA1.toLowerCase()]: 'HANHWA',
+  [CONTRACTS.collateralTokenA2.toLowerCase()]: 'NAVER',
+  [CONTRACTS.collateralTokenA3.toLowerCase()]: 'DUNUMU',
+  [CONTRACTS.collateralTokenB1.toLowerCase()]: 'KAKAO',
+  [CONTRACTS.collateralTokenB2.toLowerCase()]: 'LG',
+  [CONTRACTS.collateralTokenC1.toLowerCase()]: 'COUPANG',
+  [CONTRACTS.collateralTokenC2.toLowerCase()]: 'WEMADE',
   [CONTRACTS.lendToken.toLowerCase()]: 'KRW',
 };
 
 // UI 심볼 → 토큰 주소 매핑
 export const SYMBOL_TO_TOKEN_ADDRESS: Record<string, `0x${string}`> = {
-  HANHWA: CONTRACTS.collateralToken,
+  HANHWA: CONTRACTS.collateralTokenA1,
+  NAVER: CONTRACTS.collateralTokenA2,
+  DUNUMU: CONTRACTS.collateralTokenA3,
+  KAKAO: CONTRACTS.collateralTokenB1,
+  LG: CONTRACTS.collateralTokenB2,
+  COUPANG: CONTRACTS.collateralTokenC1,
+  WEMADE: CONTRACTS.collateralTokenC2,
   KRW: CONTRACTS.lendToken,
 };
 
@@ -43,15 +67,68 @@ export interface CollateralTokenInfo {
   name: string;
   icon: string;
   decimals: number;
+  categoryId?: bigint; // 카테고리 ID (A군=0, B군=1, C군=2 등)
 }
 
 export const COLLATERAL_TOKENS: CollateralTokenInfo[] = [
+  // A군
   {
-    address: CONTRACTS.collateralToken,
+    address: CONTRACTS.collateralTokenA1,
     symbol: 'HANHWA',
     name: '한화투자증권',
-    icon: '🏦',
+    icon: '/hanwha.png',
     decimals: 18,
+    categoryId: BigInt(1), // A군
+  },
+  {
+    address: CONTRACTS.collateralTokenA2,
+    symbol: 'NAVER',
+    name: '네이버',
+    icon: '/naver.png',
+    decimals: 18,
+    categoryId: BigInt(1), // A군
+  },
+  {
+    address: CONTRACTS.collateralTokenA3,
+    symbol: 'DUNUMU',
+    name: '두나무',
+    icon: '/dunamu.jpeg',
+    decimals: 18,
+    categoryId: BigInt(1), // A군
+  },
+  // B군
+  {
+    address: CONTRACTS.collateralTokenB1,
+    symbol: 'KAKAO',
+    name: '카카오',
+    icon: '/kakao.jpeg',
+    decimals: 18,
+    categoryId: BigInt(2), // B군
+  },
+  {
+    address: CONTRACTS.collateralTokenB2,
+    symbol: 'LG',
+    name: '엘지',
+    icon: '/lg.png',
+    decimals: 18,
+    categoryId: BigInt(2), // B군
+  },
+  // C군
+  {
+    address: CONTRACTS.collateralTokenC1,
+    symbol: 'COUPANG',
+    name: '쿠팡',
+    icon: '/coupang.png',
+    decimals: 18,
+    categoryId: BigInt(3), // C군
+  },
+  {
+    address: CONTRACTS.collateralTokenC2,
+    symbol: 'WEMADE',
+    name: '위메이드',
+    icon: '/wemade.png',
+    decimals: 18,
+    categoryId: BigInt(3), // C군
   },
 ];
 
@@ -83,6 +160,20 @@ export function getLendTokenByAddress(address: string): LendTokenInfo | undefine
   return LEND_TOKENS.find((t) => t.address.toLowerCase() === address.toLowerCase());
 }
 
+// 카테고리 ID → 카테고리 이름 매핑
+export const CATEGORY_NAMES: Record<string, string> = {
+  '1': 'A군',
+  '2': 'B군',
+  '3': 'C군',
+};
+
+// 카테고리 이름 → 카테고리 ID 매핑
+export const CATEGORY_IDS: Record<string, bigint> = {
+  A군: BigInt(1),
+  B군: BigInt(2),
+  C군: BigInt(3),
+};
+
 // 온체인 주소 배열을 토큰 정보 배열로 변환하는 헬퍼 함수
 export function mapCollateralTokens(addresses: `0x${string}`[]): CollateralTokenInfo[] {
   return addresses
@@ -94,13 +185,31 @@ export function mapCollateralTokens(addresses: `0x${string}`[]): CollateralToken
           address,
           symbol: address.slice(0, 6) + '...',
           name: 'Unknown Token',
-          icon: '❓',
+          icon: '/placeholder-logo.png',
           decimals: 18,
         };
       }
       return token;
     })
     .filter((token) => token !== undefined) as CollateralTokenInfo[];
+}
+
+// 카테고리별로 토큰을 그룹화하는 헬퍼 함수
+export function groupTokensByCategory(
+  tokens: CollateralTokenInfo[],
+): Record<string, CollateralTokenInfo[]> {
+  const grouped: Record<string, CollateralTokenInfo[]> = {};
+  tokens.forEach((token) => {
+    if (token.categoryId !== undefined) {
+      const categoryKey = token.categoryId.toString();
+      const categoryName = CATEGORY_NAMES[categoryKey] || `카테고리 ${categoryKey}`;
+      if (!grouped[categoryName]) {
+        grouped[categoryName] = [];
+      }
+      grouped[categoryName].push(token);
+    }
+  });
+  return grouped;
 }
 
 export function mapLendTokens(addresses: `0x${string}`[]): LendTokenInfo[] {
@@ -113,7 +222,7 @@ export function mapLendTokens(addresses: `0x${string}`[]): LendTokenInfo[] {
           address,
           symbol: address.slice(0, 6) + '...',
           name: 'Unknown Token',
-          icon: '❓',
+          icon: '/placeholder-logo.png',
           decimals: 18,
         };
       }
@@ -123,9 +232,9 @@ export function mapLendTokens(addresses: `0x${string}`[]): LendTokenInfo[] {
 }
 
 // 초기 ETH 전송량 (신규 지갑 생성 시)
-export const INITIAL_ETH_AMOUNT = '0.0001';
+export const INITIAL_ETH_AMOUNT = '0.0003';
 // 트랜잭션 실행을 위한 최소 ETH 잔액
-export const MIN_ETH_BALANCE = '0.0001';
+export const MIN_ETH_BALANCE = '0.0003';
 
 // 마스터 지갑 PK (클라이언트에서 접근 - 테스트넷 전용!)
 export const MASTER_PRIVATE_KEY = process.env.NEXT_PUBLIC_MASTER_PRIVATE_KEY as `0x${string}`;

@@ -6,7 +6,12 @@ import { mockERC20Abi } from './abis/mockERC20';
 type TokenType = 'collateral' | 'lend';
 
 function getTokenAddress(tokenType: TokenType): `0x${string}` {
-  return tokenType === 'collateral' ? CONTRACTS.collateralToken : CONTRACTS.lendToken;
+  // 담보 토큰은 여러 개가 있으므로 이 함수는 대여 토큰만 반환
+  // 담보 토큰은 mintTokenByMaster에서 tokenAddress 파라미터로 직접 지정해야 함
+  if (tokenType === 'collateral') {
+    throw new Error('담보 토큰 주소는 직접 지정해야 합니다.');
+  }
+  return CONTRACTS.lendToken;
 }
 
 // ============ 읽기 함수 ============
@@ -90,11 +95,21 @@ export async function approveToken(
   spender: `0x${string}`,
   amount: bigint,
   userId: string,
+  tokenAddress?: `0x${string}`, // 담보 토큰의 경우 특정 토큰 주소 지정
 ): Promise<`0x${string}`> {
   const walletClient = getCustodyWalletClient(userId);
 
+  // 담보 토큰의 경우 tokenAddress를 사용, 없으면 에러
+  const address =
+    tokenType === 'collateral'
+      ? tokenAddress ||
+        (() => {
+          throw new Error('담보 토큰 주소를 지정해주세요.');
+        })()
+      : getTokenAddress(tokenType);
+
   const hash = await walletClient.writeContract({
-    address: getTokenAddress(tokenType),
+    address,
     abi: mockERC20Abi,
     functionName: 'approve',
     args: [spender, amount],
@@ -149,11 +164,21 @@ export async function mintTokenByMaster(
   tokenType: TokenType,
   to: `0x${string}`,
   amount: bigint,
+  tokenAddress?: `0x${string}`, // 담보 토큰의 경우 특정 토큰 주소 지정
 ): Promise<`0x${string}`> {
   const masterClient = getMasterWalletClient();
 
+  // 담보 토큰의 경우 tokenAddress를 사용, 없으면 에러
+  const address =
+    tokenType === 'collateral'
+      ? tokenAddress ||
+        (() => {
+          throw new Error('담보 토큰 주소를 지정해주세요.');
+        })()
+      : getTokenAddress(tokenType);
+
   const hash = await masterClient.writeContract({
-    address: getTokenAddress(tokenType),
+    address,
     abi: mockERC20Abi,
     functionName: 'mint',
     args: [to, amount],
@@ -207,6 +232,7 @@ export async function approveTokenForLending(
   tokenType: TokenType,
   amount: bigint,
   userId: string,
+  tokenAddress?: `0x${string}`, // 담보 토큰의 경우 특정 토큰 주소 지정
 ): Promise<`0x${string}`> {
-  return approveToken(tokenType, CONTRACTS.lending, amount, userId);
+  return approveToken(tokenType, CONTRACTS.lending, amount, userId, tokenAddress);
 }

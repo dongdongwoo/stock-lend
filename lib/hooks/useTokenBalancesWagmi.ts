@@ -42,7 +42,7 @@ export function useTokenBalancesWagmi() {
     contracts: hasWallet && contracts.length > 0 ? contracts : [],
     query: {
       enabled: hasWallet && contracts.length > 0,
-      refetchInterval: 1500,
+      refetchInterval: 2000, // 2초마다 자동 갱신
       staleTime: 1000,
     },
   });

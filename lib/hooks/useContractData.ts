@@ -116,7 +116,8 @@ function transformBorrowOffer(offer: ContractBorrowOffer): UIBorrowOffer {
 }
 
 function transformLendOffer(offer: ContractLendOffer): UILendOffer {
-  const collateralToken = getCollateralTokenByAddress(offer.collateralToken);
+  // categoryId로 변경됨 (collateralToken → categoryId)
+  const categoryId = offer.categoryId;
   const lendToken = getLendTokenByAddress(offer.lendToken);
 
   return {
@@ -126,8 +127,9 @@ function transformLendOffer(offer: ContractLendOffer): UILendOffer {
     lenderWallet: offer.lender,
     borrower:
       offer.borrower === '0x0000000000000000000000000000000000000000' ? null : offer.borrower,
-    requestedCollateralStock: collateralToken?.symbol || 'UNKNOWN',
-    collateralTokenAddress: offer.collateralToken,
+    requestedCollateralStock: offer.categoryId ? `종목군 ${offer.categoryId.toString()}` : 'UNKNOWN',
+    categoryId: offer.categoryId || BigInt(0),
+    collateralTokenAddress: null, // 매칭 전에는 null, 매칭 후에는 borrowOffer에서 가져와야 함
     collateralAmount: formatTokenAmount(offer.collateralAmount),
     loanCurrency: lendToken?.symbol || 'dKRW',
     lendTokenAddress: offer.lendToken,

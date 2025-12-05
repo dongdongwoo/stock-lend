@@ -18,15 +18,31 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useStore, type BorrowOffer, type LendOffer } from '@/lib/store';
-import { mapCollateralTokens } from '@/lib/contracts/config';
+import { useStore } from '@/lib/store';
+import { type UIBorrowOffer, type UILendOffer } from '@/lib/hooks/types';
+import { mapCollateralTokens, getCollateralTokenByAddress } from '@/lib/contracts/config';
+import { getTokenCategory } from '@/lib/contracts/lending';
+
+// 종목군 ID를 문자로 변환 (1 -> A, 2 -> B, 3 -> C, ...)
+function categoryIdToLetter(categoryId: bigint | undefined | null): string {
+  if (categoryId === undefined || categoryId === null) {
+    return 'N/A';
+  }
+  const num = Number(categoryId);
+  if (num <= 0) return 'N/A';
+  // 1 -> A, 2 -> B, 3 -> C, ...
+  return String.fromCharCode(64 + num); // 65는 'A'의 ASCII 코드
+}
 import {
   useCollateralRiskParamsWagmi,
   useOraclePricesWagmi,
   useAllowedCollateralTokensWagmi,
+  useCategoriesWagmi,
+  useCategoryTokensWagmi,
 } from '@/lib/hooks';
 import { TransactionModal, type TxStep } from './transaction-modal';
 import { AlertTriangle } from 'lucide-react';
+import { TokenIcon } from '@/components/token-icon';
 import { parseUnits } from 'viem';
 import {
   updateLendOffer as updateLendOfferContract,
@@ -35,11 +51,12 @@ import {
 import { approveTokenForLending, mintTokenByMaster } from '@/lib/contracts/tokens';
 import { CONTRACTS } from '@/lib/contracts/config';
 import { getCustodyWalletAddress, ensureEthBalance } from '@/lib/wallet/custody';
+import { formatNumberWithCommas, removeCommas } from '@/lib/utils';
 
 interface EditOfferModalProps {
   open: boolean;
   onClose: () => void;
-  offer: BorrowOffer | LendOffer | null;
+  offer: UIBorrowOffer | UILendOffer | null;
   type: 'borrow' | 'lend';
 }
 
@@ -47,14 +64,16 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
   const { user, updateBorrowOffer, updateUserStocks, updateUserCash } = useStore();
   const { prices: oraclePrice } = useOraclePricesWagmi();
   const { riskParams } = useCollateralRiskParamsWagmi();
-  const { tokens: collateralTokenAddresses } = useAllowedCollateralTokensWagmi();
+  const { categories } = useCategoriesWagmi();
 
-  // 온체인에서 가져온 토큰 목록
-  const collateralTokens = mapCollateralTokens(collateralTokenAddresses);
+  // 선택된 카테고리 (대여 상품 수정용)
+  const [selectedCategoryId, setSelectedCategoryId] = useState<bigint | null>(null);
+  // 선택된 카테고리의 토큰 목록
+  const { tokens: availableTokens } = useCategoryTokensWagmi(selectedCategoryId);
 
   const isBorrow = type === 'borrow';
-  const borrowOffer = offer as BorrowOffer;
-  const lendOffer = offer as LendOffer;
+  const borrowOffer = offer as UIBorrowOffer;
+  const lendOffer = offer as UILendOffer;
 
   // State for borrow
   const [collateralAmount, setCollateralAmount] = useState('');
@@ -67,6 +86,7 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
   // Common state
   const [interestRate, setInterestRate] = useState('');
   const [maturityDays, setMaturityDays] = useState(30);
+  const [earlyRepayFee, setEarlyRepayFee] = useState('');
 
   const [showTx, setShowTx] = useState(false);
   const [txSteps, setTxSteps] = useState<TxStep[]>([]);
@@ -80,12 +100,55 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
       if (isBorrow) {
         setCollateralAmount(borrowOffer.collateralAmount.toString());
         setLoanAmount(borrowOffer.loanAmount.toString());
+        // 대출 상품의 경우: collateralTokenAddress로부터 categoryId 조회
+        if (borrowOffer.collateralTokenAddress) {
+          getTokenCategory(borrowOffer.collateralTokenAddress as `0x${string}`)
+            .then((categoryId) => {
+              setSelectedCategoryId(categoryId);
+            })
+            .catch(() => {
+              // 에러 발생 시 토큰 정보에서 카테고리 찾기
+              const tokenInfo = getCollateralTokenByAddress(borrowOffer.collateralTokenAddress!);
+              if (tokenInfo?.categoryId) {
+                setSelectedCategoryId(tokenInfo.categoryId);
+              }
+            });
+        } else {
+          setSelectedCategoryId(null);
+        }
       } else {
         setCashAmount(lendOffer.loanAmount.toString());
-        setRequestedCollateralStock(lendOffer.requestedCollateralStock);
+        // 대여 상품의 경우: categoryId를 직접 사용
+        if (lendOffer.categoryId) {
+          setSelectedCategoryId(lendOffer.categoryId);
+        } else {
+          // fallback: 토큰 주소로부터 카테고리 조회 (레거시 지원)
+          if (lendOffer.collateralTokenAddress) {
+            getTokenCategory(lendOffer.collateralTokenAddress as `0x${string}`)
+              .then((categoryId) => {
+                setSelectedCategoryId(categoryId);
+              })
+              .catch(() => {
+                // 에러 발생 시 토큰 정보에서 카테고리 찾기
+                if (lendOffer.collateralTokenAddress) {
+                  const tokenInfo = getCollateralTokenByAddress(lendOffer.collateralTokenAddress);
+                  if (tokenInfo?.categoryId) {
+                    setSelectedCategoryId(tokenInfo.categoryId);
+                  }
+                }
+              });
+          } else {
+            setSelectedCategoryId(null);
+          }
+        }
       }
       setInterestRate(offer.interestRate.toString());
       setMaturityDays(offer.maturityDays);
+      // earlyRepayFeeBps를 %로 변환 (100 bps = 1%)
+      const earlyRepayFeePercent = offer.earlyRepayFeeBps
+        ? Number(offer.earlyRepayFeeBps) / 100
+        : 0;
+      setEarlyRepayFee(earlyRepayFeePercent.toString());
     }
   }, [open, offer, isBorrow, borrowOffer, lendOffer]);
 
@@ -93,7 +156,7 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
 
   // Calculate values for borrow - 온체인 데이터 사용
   const stock = isBorrow
-    ? collateralTokens.find((s) => s.symbol === borrowOffer.collateralStock)
+    ? availableTokens.find((s) => s.symbol === borrowOffer.collateralStock)
     : null;
   const stockPrice = stock
     ? oraclePrice[stock.symbol] || oraclePrice[stock.address.toLowerCase()] || 0
@@ -140,7 +203,7 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
     if (isBorrow) {
       if (newCollateralAmount <= 0 || newLoanAmount <= 0 || !isLtvValid) return;
     } else {
-      if (newCashAmount <= 0 || !requestedCollateralStock) return;
+      if (newCashAmount <= 0 || !selectedCategoryId) return;
     }
 
     setShowTx(true);
@@ -242,7 +305,7 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
         // Borrow offer 수정 - 컨트랙트 호출
         const interestRateBps = BigInt(Math.round(rate * 100)); // % to bps
         const duration = BigInt(maturityDays * 24 * 60 * 60); // days to seconds
-        const earlyRepayFeeBps = BigInt(100); // 1%
+        const earlyRepayFeeBps = BigInt(Math.round(Number.parseFloat(earlyRepayFee || '0') * 100)); // % to bps
         const newCollateralAmountInWei = parseUnits(newCollateralAmount.toString(), 18);
         const newLoanAmountInWei = parseUnits(newLoanAmount.toString(), 18);
 
@@ -278,7 +341,10 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
 
           // Step 3: 추가 담보 → 담보 토큰 발행 (Master Mint)
           const additionalAmount = parseUnits(collateralDiff.toString(), 18);
-          await mintTokenByMaster('collateral', userAddress, additionalAmount);
+          if (!stock) {
+            throw new Error('담보 토큰 정보를 찾을 수 없습니다.');
+          }
+          await mintTokenByMaster('collateral', userAddress, additionalAmount, stock.address);
           setTxSteps((prev) =>
             prev.map((s) =>
               s.id === 'tokenize'
@@ -290,7 +356,10 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
           );
 
           // Step 4: 담보 토큰 Approve (백그라운드에서 처리)
-          await approveTokenForLending('collateral', additionalAmount, user.id);
+          if (!stock) {
+            throw new Error('담보 토큰 정보를 찾을 수 없습니다.');
+          }
+          await approveTokenForLending('collateral', additionalAmount, user.id, stock.address);
 
           // Step 5: updateBorrowOffer (담보 토큰 전송 완료)
           const offerId =
@@ -453,7 +522,7 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
         // Lend offer 수정 - 컨트랙트 호출
         const interestRateBps = BigInt(Math.round(rate * 100)); // % to bps
         const duration = BigInt(maturityDays * 24 * 60 * 60); // days to seconds
-        const earlyRepayFeeBps = BigInt(100); // 1%
+        const earlyRepayFeeBps = BigInt(Math.round(Number.parseFloat(earlyRepayFee || '0') * 100)); // % to bps
         const newLoanAmountInWei = parseUnits(newCashAmount.toString(), 18);
 
         // steps 순서대로 진행
@@ -501,9 +570,13 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
 
           // Step 4: dKRW 토큰 Approve 및 전송 완료 (updateLendOffer)
           await approveTokenForLending('lend', additionalAmount, user.id);
+          if (!selectedCategoryId) {
+            throw new Error('종목군을 선택해주세요.');
+          }
           const hash = await updateLendOfferContract(
             {
               offerId: BigInt(lendOffer.id),
+              newCategoryId: selectedCategoryId,
               newLoanAmount: newLoanAmountInWei,
               newInterestRateBps: interestRateBps,
               newDuration: duration,
@@ -589,9 +662,13 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
           );
 
           // Step 6: 유저 계좌에 원 전송 및 updateLendOffer
+          if (!selectedCategoryId) {
+            throw new Error('종목군을 선택해주세요.');
+          }
           const hash = await updateLendOfferContract(
             {
               offerId: BigInt(lendOffer.id),
+              newCategoryId: selectedCategoryId,
               newLoanAmount: newLoanAmountInWei,
               newInterestRateBps: interestRateBps,
               newDuration: duration,
@@ -646,9 +723,13 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
           );
 
           // Step 3: 상품 조건 업데이트 (updateLendOffer)
+          if (!selectedCategoryId) {
+            throw new Error('종목군을 선택해주세요.');
+          }
           const hash = await updateLendOfferContract(
             {
               offerId: BigInt(lendOffer.id),
+              newCategoryId: selectedCategoryId,
               newLoanAmount: newLoanAmountInWei,
               newInterestRateBps: interestRateBps,
               newDuration: duration,
@@ -696,15 +777,24 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
     );
   }
 
+  // 트랜잭션 진행 중일 때는 모달 닫기 방지
+  const handleOpenChange = (newOpen: boolean) => {
+    // 트랜잭션이 진행 중이 아닐 때만 닫기 허용
+    if (!newOpen && !showTx) {
+      onClose();
+    }
+    // showTx가 true일 때는 닫기 무시 (TransactionModal에서 처리)
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{isBorrow ? '대출 상품 수정' : '대여 상품 수정'}</DialogTitle>
           <DialogDescription>
             {isBorrow
               ? '담보 수량, 대출 금액, 이자율, 만기를 수정할 수 있습니다. 담보 종류는 변경할 수 없습니다.'
-              : '대여 금액, 요청 담보, 이자율, 만기를 수정할 수 있습니다. 대여 통화(원화)는 변경할 수 없습니다.'}
+              : '대여 금액, 종목군, 이자율, 만기를 수정할 수 있습니다. 대여 통화(원화)는 변경할 수 없습니다.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -714,12 +804,23 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
               {/* 담보 종류 (수정 불가) */}
               <div className="space-y-2">
                 <Label className="text-muted-foreground">담보 종류 (수정 불가)</Label>
-                <div className="flex items-center gap-2 rounded-lg border bg-secondary/50 p-3">
-                  <span className="text-xl">{stock?.icon}</span>
-                  <span className="font-medium">{stock?.name}</span>
-                  <span className="ml-auto text-sm text-muted-foreground">
-                    현재가: ₩{stockPrice.toLocaleString()}
-                  </span>
+                <div className="rounded-lg border bg-secondary/50 p-3 space-y-2">
+                  <div className="flex items-center gap-2">
+                    {stock?.icon && <TokenIcon icon={stock.icon} name={stock.name} size={24} />}
+                    <span className="font-medium">{stock?.name}</span>
+                    {selectedCategoryId && (
+                      <span className="ml-auto text-sm font-mono font-medium text-primary">
+                        {categoryIdToLetter(selectedCategoryId)}군
+                      </span>
+                    )}
+                  </div>
+                  {stockPrice > 0 ? (
+                    <div className="text-sm text-muted-foreground">
+                      현재가: ₩{stockPrice.toLocaleString()}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-muted-foreground">현재가: 가격 정보 없음</div>
+                  )}
                 </div>
               </div>
 
@@ -767,9 +868,13 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
                 <Label>대출 희망 금액 (원화)</Label>
                 <div className="relative">
                   <Input
-                    type="number"
-                    value={loanAmount}
-                    onChange={(e) => setLoanAmount(e.target.value)}
+                    type="text"
+                    inputMode="numeric"
+                    value={formatNumberWithCommas(loanAmount)}
+                    onChange={(e) => {
+                      const numericValue = removeCommas(e.target.value);
+                      setLoanAmount(numericValue);
+                    }}
                     placeholder="0"
                     className="pr-16"
                   />
@@ -784,7 +889,8 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  최대 대출 가능 (LTV {maxLtv * 100}%): ₩{maxLoanAmount.toLocaleString()}
+                  최대 대출 가능 (LTV {(maxLtv * 100).toFixed(1)}%): ₩
+                  {maxLoanAmount.toLocaleString()}
                 </p>
                 {newLoanAmount > 0 && (
                   <div className="flex items-center gap-2">
@@ -825,9 +931,13 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
                 <Label>대여 금액</Label>
                 <div className="flex items-center gap-2">
                   <Input
-                    type="number"
-                    value={cashAmount}
-                    onChange={(e) => setCashAmount(e.target.value)}
+                    type="text"
+                    inputMode="numeric"
+                    value={formatNumberWithCommas(cashAmount)}
+                    onChange={(e) => {
+                      const numericValue = removeCommas(e.target.value);
+                      setCashAmount(numericValue);
+                    }}
                     placeholder="0"
                   />
                   <span className="text-sm text-muted-foreground">원</span>
@@ -853,35 +963,68 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
                 </p>
               </div>
 
-              {/* 요청 담보 */}
+              {/* 종목군 선택 */}
               <div className="space-y-2">
-                <Label>요청 담보 종류</Label>
+                <Label>종목군 선택</Label>
                 <Select
-                  value={requestedCollateralStock}
-                  onValueChange={setRequestedCollateralStock}
+                  value={selectedCategoryId?.toString() || ''}
+                  onValueChange={(value) => {
+                    const categoryId = BigInt(value);
+                    setSelectedCategoryId(categoryId);
+                  }}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="담보로 받을 주식 선택" />
+                    <SelectValue placeholder="종목군을 선택하세요" />
                   </SelectTrigger>
                   <SelectContent>
-                    {collateralTokens.map((token) => {
-                      const price =
-                        oraclePrice[token.symbol] || oraclePrice[token.address.toLowerCase()] || 0;
-                      return (
-                        <SelectItem key={token.symbol} value={token.symbol}>
-                          <div className="flex items-center gap-2">
-                            <span>{token.icon}</span>
-                            <span>{token.name}</span>
-                            <span className="text-muted-foreground">
-                              (₩{price.toLocaleString()})
-                            </span>
-                          </div>
-                        </SelectItem>
-                      );
-                    })}
+                    {categories.map((category) => (
+                      <SelectItem key={category.id.toString()} value={category.id.toString()}>
+                        {category.name}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* 담보 가능 토큰 목록 */}
+              {selectedCategoryId && (
+                <div className="space-y-2">
+                  <Label>담보 가능 토큰 목록</Label>
+                  <div className="rounded-lg border bg-secondary/50 p-3">
+                    {availableTokens.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        선택한 종목군에 담보 토큰이 없습니다.
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        {availableTokens.map((token) => {
+                          const price =
+                            oraclePrice[token.symbol] ||
+                            oraclePrice[token.address.toLowerCase()] ||
+                            0;
+                          return (
+                            <div
+                              key={token.symbol}
+                              className="flex items-center justify-between rounded-md bg-background p-2"
+                            >
+                              <div className="flex items-center gap-2">
+                                <TokenIcon icon={token.icon} name={token.name} size={20} />
+                                <span className="text-sm font-medium">{token.name}</span>
+                              </div>
+                              <span className="text-sm text-muted-foreground">
+                                ₩{price.toLocaleString()}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    선택한 종목군에 포함된 모든 토큰이 담보로 사용 가능합니다.
+                  </p>
+                </div>
+              )}
             </>
           )}
 
@@ -939,13 +1082,51 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
             </div>
           </div>
 
+          {/* 중도상환수수료 */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label>중도상환수수료</Label>
+              <span className="font-mono text-sm font-medium">
+                {earlyRepayFee !== '' ? `${Number(earlyRepayFee).toFixed(1)}%` : '-'}
+              </span>
+            </div>
+            <div className="relative">
+              <Input
+                type="number"
+                step="0.1"
+                min="0"
+                max="100"
+                placeholder="0"
+                value={earlyRepayFee}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === '') {
+                    setEarlyRepayFee('');
+                  } else {
+                    const numVal = Number.parseFloat(val);
+                    if (!isNaN(numVal) && numVal >= 0 && numVal <= 100) {
+                      setEarlyRepayFee(val);
+                    }
+                  }
+                }}
+                className="pr-8"
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                %
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              만기 전 상환 시 원금 대비 수수료 (0% ~ 100% 범위에서 설정 가능)
+            </p>
+          </div>
+
           <Button
             className="w-full"
             onClick={handleSubmit}
             disabled={
               isBorrow
                 ? newCollateralAmount <= 0 || newLoanAmount <= 0 || !isLtvValid
-                : newCashAmount <= 0 || !requestedCollateralStock
+                : newCashAmount <= 0 || !selectedCategoryId
             }
           >
             상품 수정

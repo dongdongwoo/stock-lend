@@ -18,13 +18,17 @@ import {
   useOraclePricesWagmi,
   useCollateralRiskParamsWagmi,
   useAllowedCollateralTokensWagmi,
+  useCategoriesWagmi,
+  useCategoryTokensWagmi,
 } from '@/lib/hooks';
-import { mapCollateralTokens, CONTRACTS } from '@/lib/contracts/config';
+import { mapCollateralTokens, CONTRACTS, CATEGORY_IDS } from '@/lib/contracts/config';
+import { formatNumberWithCommas, removeCommas } from '@/lib/utils';
 import { createLendOffer, createBorrowOffer } from '@/lib/contracts/lending';
 import { approveTokenForLending, mintTokenByMaster } from '@/lib/contracts/tokens';
 import { getCustodyWalletAddress, ensureEthBalance } from '@/lib/wallet/custody';
 import { TransactionModal, type TxStep } from './transaction-modal';
 import { ChevronRight } from 'lucide-react';
+import { TokenIcon } from '@/components/token-icon';
 
 interface CreateOfferModalProps {
   open: boolean;
@@ -36,10 +40,12 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
   const { user, updateUserCash, updateUserStocks } = useStore();
   const { prices: oraclePrice } = useOraclePricesWagmi();
   const { riskParams } = useCollateralRiskParamsWagmi();
-  const { tokens: collateralTokenAddresses } = useAllowedCollateralTokensWagmi();
+  const { categories } = useCategoriesWagmi();
 
-  // 온체인에서 가져온 토큰 목록
-  const collateralTokens = mapCollateralTokens(collateralTokenAddresses);
+  // 선택된 카테고리
+  const [selectedCategoryId, setSelectedCategoryId] = useState<bigint | null>(null);
+  // 선택된 카테고리의 토큰 목록
+  const { tokens: availableTokens } = useCategoryTokensWagmi(selectedCategoryId);
 
   const [selectedStock, setSelectedStock] = useState('');
   const [selectedCurrency, setSelectedCurrency] = useState('KRW');
@@ -48,7 +54,6 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
   const [maturityMonths, setMaturityMonths] = useState<number | null>(null);
   const [loanAmount, setLoanAmount] = useState('');
   const [earlyRepayFee, setEarlyRepayFee] = useState('');
-  const [selectedCollateralGroup, setSelectedCollateralGroup] = useState<string>(''); // 대여 상품용: 종목군 선택
 
   const [showTx, setShowTx] = useState(false);
   const [txSteps, setTxSteps] = useState<TxStep[]>([]);
@@ -57,13 +62,6 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
   const [txError, setTxError] = useState<string | null>(null);
 
   const isBorrow = type === 'borrow';
-
-  // 종목군 정의 (대여 상품 등록용)
-  const collateralGroups = [
-    { id: 'A', label: 'A군', ltv: 65, ltvBps: BigInt(6500) },
-    { id: 'B', label: 'B군', ltv: 60, ltvBps: BigInt(6000) },
-    { id: 'C', label: 'C군', ltv: 55, ltvBps: BigInt(5500) },
-  ];
 
   const maturityOptions = [
     { label: '1개월', months: 1, days: 30 },
@@ -83,6 +81,7 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
 
   useEffect(() => {
     if (open) {
+      setSelectedCategoryId(null);
       setSelectedStock('');
       setSelectedCurrency('KRW');
       setAmount('');
@@ -90,63 +89,49 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
       setInterestRate('');
       setMaturityMonths(null);
       setEarlyRepayFee('');
-      setSelectedCollateralGroup('');
       setTxError(null);
     }
   }, [open]);
 
-  // 선택된 종목군 정보 (대여 상품용)
-  const selectedGroup = collateralGroups.find((g) => g.id === selectedCollateralGroup);
-
-  // 선택된 종목군에 해당하는 토큰들 필터링 (대여 상품용)
-  // LTV가 선택된 종목군의 LTV와 일치하는 토큰들만 표시
-  const availableTokensForGroup =
-    !isBorrow && selectedGroup
-      ? collateralTokens.filter((token) => {
-          const tokenLtvBps =
-            riskParams[token.symbol]?.maxLtvBps ||
-            riskParams[token.address.toLowerCase()]?.maxLtvBps ||
-            riskParams[token.address]?.maxLtvBps ||
-            BigInt(0);
-          // LTV가 정확히 일치하는 토큰만 필터링 (약간의 오차 허용: ±1 bps)
-          return (
-            tokenLtvBps >= selectedGroup.ltvBps - BigInt(1) &&
-            tokenLtvBps <= selectedGroup.ltvBps + BigInt(1)
-          );
-        })
-      : [];
-
-  // 종목군 선택 시 자동으로 첫 번째 토큰 선택 (대여 상품용)
+  // 카테고리 선택 시 토큰 목록 초기화 (대출 상품만 amount 리셋)
   useEffect(() => {
-    if (
-      !isBorrow &&
-      selectedCollateralGroup &&
-      availableTokensForGroup.length > 0 &&
-      !selectedStock
-    ) {
-      setSelectedStock(availableTokensForGroup[0].symbol);
+    if (selectedCategoryId !== null) {
+      setSelectedStock('');
+      // 대출 상품의 경우에만 amount 리셋 (대여 상품은 대여 금액을 먼저 입력하므로 유지)
+      if (isBorrow) {
+        setAmount('');
+      }
+      setLoanAmount('');
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCollateralGroup, isBorrow]);
+  }, [selectedCategoryId, isBorrow]);
+
+  // 카테고리 선택 시 첫 번째 토큰 자동 선택 (대출 상품만, 토큰이 있는 경우)
+  useEffect(() => {
+    if (isBorrow && selectedCategoryId !== null && availableTokens.length > 0 && !selectedStock) {
+      setSelectedStock(availableTokens[0].symbol);
+    }
+  }, [selectedCategoryId, availableTokens, selectedStock, isBorrow]);
 
   // 담보 토큰 정보 (온체인 데이터 사용)
-  const collateralToken = collateralTokens.find((t) => t.symbol === selectedStock);
+  // 대여 상품의 경우: 종목군의 첫 번째 토큰 사용 (종목군만 선택하므로)
+  // 대출 상품의 경우: 선택된 토큰 사용
+  const collateralToken = isBorrow
+    ? availableTokens.find((t) => t.symbol === selectedStock)
+    : availableTokens.length > 0
+    ? availableTokens[0]
+    : null;
   const stockPrice = collateralToken
     ? oraclePrice[collateralToken.symbol] || oraclePrice[collateralToken.address.toLowerCase()] || 0
     : 0;
   const collateralValueInKRW = isBorrow && amount ? Number.parseFloat(amount) * stockPrice : 0;
 
   // 온체인에서 LTV 가져오기 (주소 또는 symbol로 조회)
-  // 대여 상품의 경우 선택된 종목군의 LTV 사용
-  const maxLtvBps =
-    !isBorrow && selectedGroup
-      ? selectedGroup.ltvBps
-      : collateralToken
-      ? riskParams[collateralToken.symbol]?.maxLtvBps ||
-        riskParams[collateralToken.address.toLowerCase()]?.maxLtvBps ||
-        riskParams[collateralToken.address]?.maxLtvBps ||
-        BigInt(6000) // 기본값 60%
-      : BigInt(6000);
+  const maxLtvBps = collateralToken
+    ? riskParams[collateralToken.symbol]?.maxLtvBps ||
+      riskParams[collateralToken.address.toLowerCase()]?.maxLtvBps ||
+      riskParams[collateralToken.address]?.maxLtvBps ||
+      BigInt(6000) // 기본값 60%
+    : BigInt(6000);
   const maxLtv = Number(maxLtvBps) / 10000; // bps to decimal (예: 6000 bps = 0.6 = 60%)
 
   const maxLoanAmount = collateralValueInKRW * maxLtv;
@@ -179,8 +164,8 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
       Number(earlyRepayFee) >= 0 &&
       Number(earlyRepayFee) <= 100
     : selectedCurrency &&
-      selectedCollateralGroup &&
-      selectedStock &&
+      selectedCategoryId &&
+      availableTokens.length > 0 && // 종목군에 토큰이 있어야 함
       amount &&
       Number.parseFloat(amount) <= maxCashAvailable &&
       Number.parseFloat(amount) > 0 &&
@@ -192,7 +177,10 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
       Number(earlyRepayFee) <= 100;
 
   const handleSubmit = async () => {
-    if (!user || !isValid || !collateralToken) return;
+    if (!user || !isValid) return;
+    // 대출 상품의 경우 collateralToken 필요, 대여 상품의 경우 selectedCategoryId 필요
+    if (isBorrow && !collateralToken) return;
+    if (!isBorrow && !selectedCategoryId) return;
 
     setShowTx(true);
     setIsComplete(false);
@@ -280,6 +268,11 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
       const earlyRepayFeeBps = BigInt(Math.round(Number(earlyRepayFee) * 100)); // % to bps
 
       if (isBorrow) {
+        // 대출 상품의 경우 collateralToken이 필수
+        if (!collateralToken) {
+          throw new Error('담보 토큰을 선택해주세요.');
+        }
+
         // 1. 담보 질권설정 (시뮬레이션)
         const pledgeDelay = Math.floor(Math.random() * 1000) + 4000; // 4000~5000ms
         await new Promise((resolve) => setTimeout(resolve, pledgeDelay));
@@ -294,7 +287,10 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
         );
 
         // 2. 담보 → 담보 토큰 발행 (Master Mint)
-        await mintTokenByMaster('collateral', userAddress, amountInWei);
+        if (!collateralToken) {
+          throw new Error('담보 토큰을 선택해주세요.');
+        }
+        await mintTokenByMaster('collateral', userAddress, amountInWei, collateralToken.address);
         setTxSteps((prev) =>
           prev.map((s) =>
             s.id === 'tokenize'
@@ -306,7 +302,10 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
         );
 
         // 3. 담보 토큰 Approve
-        await approveTokenForLending('collateral', amountInWei, user.id);
+        if (!collateralToken) {
+          throw new Error('담보 토큰을 선택해주세요.');
+        }
+        await approveTokenForLending('collateral', amountInWei, user.id, collateralToken.address);
 
         setTxSteps((prev) =>
           prev.map((s) =>
@@ -364,9 +363,13 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
         );
 
         // 3. Lend Offer 생성
+        // 대여 상품의 경우: categoryId를 사용
+        if (!selectedCategoryId) {
+          throw new Error('종목군을 선택해주세요.');
+        }
         const hash = await createLendOffer(
           {
-            collateralToken: collateralToken.address,
+            categoryId: selectedCategoryId,
             lendToken: CONTRACTS.lendToken,
             loanAmount: amountInWei,
             interestRateBps,
@@ -418,7 +421,6 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
     setInterestRate('');
     setMaturityMonths(null);
     setEarlyRepayFee('');
-    setSelectedCollateralGroup('');
     onClose();
   };
 
@@ -447,8 +449,17 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
     );
   }
 
+  // 트랜잭션 진행 중일 때는 모달 닫기 방지
+  const handleOpenChange = (newOpen: boolean) => {
+    // 트랜잭션이 진행 중이 아닐 때만 닫기 허용
+    if (!newOpen && !showTx) {
+      onClose();
+    }
+    // showTx가 true일 때는 닫기 무시 (TransactionModal에서 처리)
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isBorrow ? '대출 상품 등록' : '대여 상품 등록'}</DialogTitle>
@@ -471,10 +482,14 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
                   </span>
                 </div>
                 <Input
-                  type="number"
+                  type="text"
+                  inputMode="numeric"
                   placeholder="0"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
+                  value={formatNumberWithCommas(amount)}
+                  onChange={(e) => {
+                    const numericValue = removeCommas(e.target.value);
+                    setAmount(numericValue);
+                  }}
                 />
                 <div className="flex gap-2">
                   {[10, 25, 50, 100].map((percent) => (
@@ -494,29 +509,65 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
 
               {amount && Number(amount) > 0 && (
                 <div className="space-y-2">
-                  <Label>담보 허용 가능 종목군</Label>
+                  <Label>종목군 선택</Label>
                   <Select
-                    value={selectedCollateralGroup}
+                    value={selectedCategoryId?.toString() || ''}
                     onValueChange={(value) => {
-                      setSelectedCollateralGroup(value);
+                      const categoryId = BigInt(value);
+                      setSelectedCategoryId(categoryId);
+                      setSelectedStock('');
                     }}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="종목군을 선택하세요" />
                     </SelectTrigger>
                     <SelectContent>
-                      {collateralGroups.map((group) => (
-                        <SelectItem key={group.id} value={group.id}>
-                          {group.label} (LTV {group.ltv}%)
+                      {categories.map((category) => (
+                        <SelectItem key={category.id.toString()} value={category.id.toString()}>
+                          {category.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  {selectedCollateralGroup && availableTokensForGroup.length === 0 && (
-                    <p className="text-sm text-destructive">
-                      선택한 종목군에 해당하는 담보 토큰이 없습니다.
-                    </p>
-                  )}
+                </div>
+              )}
+
+              {selectedCategoryId && (
+                <div className="space-y-2">
+                  <Label>담보 가능 토큰 목록</Label>
+                  <div className="rounded-lg border bg-secondary/50 p-3">
+                    {availableTokens.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        선택한 종목군에 담보 토큰이 없습니다.
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        {availableTokens.map((token) => {
+                          const price =
+                            oraclePrice[token.symbol] ||
+                            oraclePrice[token.address.toLowerCase()] ||
+                            0;
+                          return (
+                            <div
+                              key={token.symbol}
+                              className="flex items-center justify-between rounded-md bg-background p-2"
+                            >
+                              <div className="flex items-center gap-2">
+                                <TokenIcon icon={token.icon} name={token.name} size={20} />
+                                <span className="text-sm font-medium">{token.name}</span>
+                              </div>
+                              <span className="text-sm text-muted-foreground">
+                                ₩{price.toLocaleString()}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    선택한 종목군에 포함된 모든 토큰이 담보로 사용 가능합니다.
+                  </p>
                 </div>
               )}
             </>
@@ -526,37 +577,78 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
           {isBorrow && (
             <>
               <div className="space-y-2">
-                <Label>담보 토큰 선택</Label>
+                <Label>종목군 선택</Label>
                 <Select
-                  value={selectedStock}
-                  onValueChange={(v) => {
-                    setSelectedStock(v);
-                    setAmount('');
+                  value={selectedCategoryId?.toString() || ''}
+                  onValueChange={(value) => {
+                    const categoryId = BigInt(value);
+                    setSelectedCategoryId(categoryId);
+                    setSelectedStock('');
+                    // 대출 상품의 경우에만 amount 리셋
+                    if (isBorrow) {
+                      setAmount('');
+                    }
                     setLoanAmount('');
                   }}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="담보로 사용할 토큰을 선택하세요" />
+                    <SelectValue placeholder="종목군을 선택하세요" />
                   </SelectTrigger>
                   <SelectContent>
-                    {collateralTokens.map((token) => {
-                      const price =
-                        oraclePrice[token.symbol] || oraclePrice[token.address.toLowerCase()] || 0;
-                      return (
-                        <SelectItem key={token.symbol} value={token.symbol}>
-                          <div className="flex items-center gap-2">
-                            <span>{token.icon}</span>
-                            <span>{token.name}</span>
-                            <span className="text-muted-foreground">
-                              (₩{price.toLocaleString()})
-                            </span>
-                          </div>
-                        </SelectItem>
-                      );
-                    })}
+                    {categories.map((category) => (
+                      <SelectItem key={category.id.toString()} value={category.id.toString()}>
+                        {category.name}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
+
+              {selectedCategoryId && (
+                <div className="space-y-2">
+                  <Label>담보 토큰 선택</Label>
+                  <Select
+                    value={selectedStock}
+                    onValueChange={(v) => {
+                      setSelectedStock(v);
+                      // 대출 상품의 경우에만 amount 리셋
+                      if (isBorrow) {
+                        setAmount('');
+                      }
+                      setLoanAmount('');
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="담보로 사용할 토큰을 선택하세요" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableTokens.length === 0 ? (
+                        <div className="p-2 text-sm text-muted-foreground">
+                          선택한 종목군에 담보 토큰이 없습니다.
+                        </div>
+                      ) : (
+                        availableTokens.map((token) => {
+                          const price =
+                            oraclePrice[token.symbol] ||
+                            oraclePrice[token.address.toLowerCase()] ||
+                            0;
+                          return (
+                            <SelectItem key={token.symbol} value={token.symbol}>
+                              <div className="flex items-center gap-2">
+                                <TokenIcon icon={token.icon} name={token.name} size={20} />
+                                <span>{token.name}</span>
+                                <span className="text-muted-foreground">
+                                  (₩{price.toLocaleString()})
+                                </span>
+                              </div>
+                            </SelectItem>
+                          );
+                        })
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
 
               {selectedStock && (
                 <div className="space-y-2">
@@ -567,11 +659,13 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
                     </span>
                   </div>
                   <Input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
                     placeholder="0"
-                    value={amount}
+                    value={formatNumberWithCommas(amount)}
                     onChange={(e) => {
-                      setAmount(e.target.value);
+                      const numericValue = removeCommas(e.target.value);
+                      setAmount(numericValue);
                       setLoanAmount('');
                     }}
                   />
@@ -602,24 +696,27 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
                   <div className="flex items-center justify-between">
                     <Label>대출 희망 금액 (원)</Label>
                     <span className="text-xs text-muted-foreground">
-                      최대: ₩{maxLoanAmount.toLocaleString()} (LTV {maxLtv * 100}%)
+                      최대: ₩{maxLoanAmount.toLocaleString()} (LTV {(maxLtv * 100).toFixed(1)}%)
                     </span>
                   </div>
                   <div className="relative">
                     <Input
-                      type="number"
+                      type="text"
+                      inputMode="numeric"
                       placeholder="0"
-                      value={loanAmount}
+                      value={formatNumberWithCommas(loanAmount)}
                       onChange={(e) => {
-                        const val = e.target.value;
-                        if (val === '') {
+                        const numericValue = removeCommas(e.target.value);
+                        if (numericValue === '') {
                           setLoanAmount('');
                         } else {
-                          const numVal = Number.parseFloat(val);
-                          if (numVal > maxLoanAmount) {
-                            setLoanAmount(maxLoanAmount.toString());
-                          } else {
-                            setLoanAmount(val);
+                          const numVal = Number.parseFloat(numericValue);
+                          if (!isNaN(numVal)) {
+                            if (numVal > maxLoanAmount) {
+                              setLoanAmount(maxLoanAmount.toString());
+                            } else {
+                              setLoanAmount(numericValue);
+                            }
                           }
                         }
                       }}
@@ -652,8 +749,8 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
           )}
 
           {/* 가이드 메시지 */}
-          {((isBorrow && !selectedStock) ||
-            (!isBorrow && (!amount || Number(amount) <= 0 || !selectedCollateralGroup))) && (
+          {((isBorrow && (!selectedCategoryId || !selectedStock)) ||
+            (!isBorrow && (!amount || Number(amount) <= 0 || !selectedCategoryId))) && (
             <div className="rounded-lg border border-dashed border-muted-foreground/30 p-4 text-center">
               <p className="text-sm text-muted-foreground">
                 {isBorrow
@@ -665,12 +762,8 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
           )}
 
           {/* 이자율 & 만기 설정 */}
-          {((isBorrow && selectedStock && amount && Number(amount) > 0) ||
-            (!isBorrow &&
-              selectedCollateralGroup &&
-              selectedStock &&
-              amount &&
-              Number(amount) > 0)) && (
+          {((isBorrow && selectedCategoryId && selectedStock && amount && Number(amount) > 0) ||
+            (!isBorrow && selectedCategoryId && amount && Number(amount) > 0)) && (
             <>
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -792,8 +885,16 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">담보 허용 가능 종목군</span>
                         <span>
-                          {selectedGroup
-                            ? `${selectedGroup.label} (LTV ${selectedGroup.ltv}%)`
+                          {selectedCategoryId
+                            ? (() => {
+                                const selectedCategory = categories.find(
+                                  (c) => c.id === selectedCategoryId,
+                                );
+                                const ltvPercent = maxLtv * 100;
+                                return selectedCategory
+                                  ? `${selectedCategory.name} (LTV ${ltvPercent.toFixed(0)}%)`
+                                  : '-';
+                              })()
                             : '-'}
                         </span>
                       </div>

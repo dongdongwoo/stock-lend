@@ -8,4 +8,5 @@ export * from './useUserPositionsWagmi';
 export * from './usePositionDataWagmi';
 export * from './useAllowedTokensWagmi';
 export * from './useLiquidationsWagmi';
+export * from './useCategoriesWagmi';
 

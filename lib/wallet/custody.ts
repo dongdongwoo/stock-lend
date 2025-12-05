@@ -88,9 +88,34 @@ export async function fundCustodyWallet(userAddress: `0x${string}`): Promise<`0x
   return hash;
 }
 
-// ETH 잔액 확인
+// ETH 잔액 확인 (RPC rate limit 에러 처리 포함)
 export async function getEthBalance(address: `0x${string}`): Promise<bigint> {
-  return publicClient.getBalance({ address });
+  let retries = 0;
+  const maxRetries = 5;
+  const baseDelay = 1000; // 1 second
+
+  while (retries < maxRetries) {
+    try {
+      return await publicClient.getBalance({ address });
+    } catch (error: any) {
+      if (
+        (error.message?.includes('over rate limit') ||
+          error.message?.includes('rate limit') ||
+          error.code === -32016) &&
+        retries < maxRetries - 1
+      ) {
+        const delay = baseDelay * Math.pow(2, retries);
+        console.warn(
+          `Rate limit hit while getting ETH balance. Retrying in ${delay / 1000} seconds... (Attempt ${retries + 1}/${maxRetries})`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        retries++;
+      } else {
+        throw error; // Re-throw other errors or the last rate limit error
+      }
+    }
+  }
+  throw new Error('Failed to get ETH balance after multiple retries due to rate limit.');
 }
 
 // ETH 잔액이 부족하면 마스터가 자동으로 전송

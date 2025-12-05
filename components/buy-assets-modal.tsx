@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,8 +15,15 @@ import {
 } from '@/components/ui/select';
 import { useStore } from '@/lib/store';
 import { mapCollateralTokens } from '@/lib/contracts/config';
-import { useOraclePricesWagmi, useAllowedCollateralTokensWagmi } from '@/lib/hooks';
+import {
+  useOraclePricesWagmi,
+  useAllowedCollateralTokensWagmi,
+  useCategoriesWagmi,
+  useCategoryTokensWagmi,
+} from '@/lib/hooks';
+import { formatNumberWithCommas, removeCommas } from '@/lib/utils';
 import { Loader2, CheckCircle2, Banknote, TrendingUp } from 'lucide-react';
+import { TokenIcon } from '@/components/token-icon';
 
 interface BuyAssetsModalProps {
   open: boolean;
@@ -33,10 +40,12 @@ export function BuyAssetsModal({ open, onClose }: BuyAssetsModalProps) {
   const { user, updateUserCash, updateUserStocks } = useStore();
   // 온체인 가격 피드 사용
   const { prices: oraclePrices } = useOraclePricesWagmi();
-  const { tokens: collateralTokenAddresses } = useAllowedCollateralTokensWagmi();
+  const { categories } = useCategoriesWagmi();
 
-  // 온체인에서 가져온 토큰 목록
-  const collateralTokens = mapCollateralTokens(collateralTokenAddresses);
+  // 선택된 카테고리
+  const [selectedCategoryId, setSelectedCategoryId] = useState<bigint | null>(null);
+  // 선택된 카테고리의 토큰 목록
+  const { tokens: availableTokens } = useCategoryTokensWagmi(selectedCategoryId);
 
   const [activeTab, setActiveTab] = useState<'cash' | 'buy' | 'sell'>('cash');
   const [cashAmount, setCashAmount] = useState('');
@@ -47,9 +56,25 @@ export function BuyAssetsModal({ open, onClose }: BuyAssetsModalProps) {
   const [txSteps, setTxSteps] = useState<TxStep[]>([]);
   const [isComplete, setIsComplete] = useState(false);
 
+  // 카테고리 변경 시 토큰 초기화
+  useEffect(() => {
+    if (selectedCategoryId !== null) {
+      setSelectedStock('');
+      setStockQuantity('');
+      setSellQuantity('');
+    }
+  }, [selectedCategoryId]);
+
+  // 카테고리 선택 시 첫 번째 토큰 자동 선택
+  useEffect(() => {
+    if (selectedCategoryId !== null && availableTokens.length > 0 && !selectedStock) {
+      setSelectedStock(availableTokens[0].symbol);
+    }
+  }, [selectedCategoryId, availableTokens, selectedStock]);
+
   if (!user) return null;
 
-  const stock = collateralTokens.find((s) => s.symbol === selectedStock);
+  const stock = availableTokens.find((s) => s.symbol === selectedStock);
   // 온체인 가격 우선 사용 (symbol 또는 주소로 조회)
   const stockPrice = stock
     ? oraclePrices[stock.symbol] ||
@@ -233,8 +258,17 @@ export function BuyAssetsModal({ open, onClose }: BuyAssetsModalProps) {
     );
   }
 
+  // 트랜잭션 진행 중일 때는 모달 닫기 방지
+  const handleOpenChange = (newOpen: boolean) => {
+    // 트랜잭션이 진행 중이 아닐 때만 닫기 허용
+    if (!newOpen && !showTx) {
+      onClose();
+    }
+    // showTx가 true일 때는 닫기 무시
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>자산 구매</DialogTitle>
@@ -265,10 +299,14 @@ export function BuyAssetsModal({ open, onClose }: BuyAssetsModalProps) {
             <div className="space-y-2">
               <Label>구매 금액 (원)</Label>
               <Input
-                type="number"
+                type="text"
+                inputMode="numeric"
                 placeholder="0"
-                value={cashAmount}
-                onChange={(e) => setCashAmount(e.target.value)}
+                value={formatNumberWithCommas(cashAmount)}
+                onChange={(e) => {
+                  const numericValue = removeCommas(e.target.value);
+                  setCashAmount(numericValue);
+                }}
               />
               <div className="flex gap-2">
                 {[100000, 500000, 1000000, 5000000].map((amount) => (
@@ -297,28 +335,64 @@ export function BuyAssetsModal({ open, onClose }: BuyAssetsModalProps) {
 
           <TabsContent value="buy" className="space-y-4 pt-4">
             <div className="space-y-2">
-              <Label>주식 선택</Label>
-              <Select value={selectedStock} onValueChange={setSelectedStock}>
+              <Label>종목군 선택</Label>
+              <Select
+                value={selectedCategoryId?.toString() || ''}
+                onValueChange={(value) => {
+                  const categoryId = BigInt(value);
+                  setSelectedCategoryId(categoryId);
+                  setSelectedStock('');
+                  setStockQuantity('');
+                }}
+              >
                 <SelectTrigger>
-                  <SelectValue placeholder="구매할 주식을 선택하세요" />
+                  <SelectValue placeholder="종목군을 선택하세요" />
                 </SelectTrigger>
                 <SelectContent>
-                  {collateralTokens.map((token) => {
-                    const price =
-                      oraclePrices[token.symbol] || oraclePrices[token.address.toLowerCase()] || 0;
-                    return (
-                      <SelectItem key={token.symbol} value={token.symbol}>
-                        <div className="flex items-center gap-2">
-                          <span>{token.icon}</span>
-                          <span>{token.name}</span>
-                          <span className="text-muted-foreground">(₩{price.toLocaleString()})</span>
-                        </div>
-                      </SelectItem>
-                    );
-                  })}
+                  {categories.map((category) => (
+                    <SelectItem key={category.id.toString()} value={category.id.toString()}>
+                      {category.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
+
+            {selectedCategoryId && (
+              <div className="space-y-2">
+                <Label>주식 선택</Label>
+                <Select value={selectedStock} onValueChange={setSelectedStock}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="구매할 주식을 선택하세요" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableTokens.length === 0 ? (
+                      <div className="p-2 text-sm text-muted-foreground">
+                        선택한 종목군에 주식이 없습니다.
+                      </div>
+                    ) : (
+                      availableTokens.map((token) => {
+                        const price =
+                          oraclePrices[token.symbol] ||
+                          oraclePrices[token.address.toLowerCase()] ||
+                          0;
+                        return (
+                          <SelectItem key={token.symbol} value={token.symbol}>
+                            <div className="flex items-center gap-2">
+                              <TokenIcon icon={token.icon} name={token.name} size={20} />
+                              <span>{token.name}</span>
+                              <span className="text-muted-foreground">
+                                (₩{price.toLocaleString()})
+                              </span>
+                            </div>
+                          </SelectItem>
+                        );
+                      })
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             {selectedStock && (
               <>
@@ -350,17 +424,16 @@ export function BuyAssetsModal({ open, onClose }: BuyAssetsModalProps) {
                 <div className="space-y-2">
                   <Label>구매 수량 (주)</Label>
                   <Input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
                     placeholder="0"
-                    min="0"
-                    max={maxAffordableQuantity}
-                    value={stockQuantity}
+                    value={formatNumberWithCommas(stockQuantity)}
                     onChange={(e) => {
-                      const val = e.target.value;
-                      if (val === '') {
+                      const numericValue = removeCommas(e.target.value);
+                      if (numericValue === '') {
                         setStockQuantity('');
                       } else {
-                        const numVal = Number.parseInt(val, 10);
+                        const numVal = Number.parseInt(numericValue, 10);
                         if (!isNaN(numVal) && numVal >= 0) {
                           // 구매 가능 수량을 초과하지 않도록 제한
                           const maxQty = maxAffordableQuantity;
@@ -434,35 +507,68 @@ export function BuyAssetsModal({ open, onClose }: BuyAssetsModalProps) {
 
           <TabsContent value="sell" className="space-y-4 pt-4">
             <div className="space-y-2">
-              <Label>주식 선택</Label>
-              <Select value={selectedStock} onValueChange={setSelectedStock}>
+              <Label>종목군 선택</Label>
+              <Select
+                value={selectedCategoryId?.toString() || ''}
+                onValueChange={(value) => {
+                  const categoryId = BigInt(value);
+                  setSelectedCategoryId(categoryId);
+                  setSelectedStock('');
+                  setSellQuantity('');
+                }}
+              >
                 <SelectTrigger>
-                  <SelectValue placeholder="판매할 주식을 선택하세요" />
+                  <SelectValue placeholder="종목군을 선택하세요" />
                 </SelectTrigger>
                 <SelectContent>
-                  {collateralTokens
-                    .filter((token) => (user.stocks?.[token.symbol] ?? 0) > 0)
-                    .map((token) => {
-                      const price =
-                        oraclePrices[token.symbol] ||
-                        oraclePrices[token.address.toLowerCase()] ||
-                        0;
-                      const quantity = user.stocks?.[token.symbol] ?? 0;
-                      return (
-                        <SelectItem key={token.symbol} value={token.symbol}>
-                          <div className="flex items-center gap-2">
-                            <span>{token.icon}</span>
-                            <span>{token.name}</span>
-                            <span className="text-muted-foreground">
-                              ({quantity.toLocaleString()}주 보유)
-                            </span>
-                          </div>
-                        </SelectItem>
-                      );
-                    })}
+                  {categories.map((category) => (
+                    <SelectItem key={category.id.toString()} value={category.id.toString()}>
+                      {category.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
+
+            {selectedCategoryId && (
+              <div className="space-y-2">
+                <Label>주식 선택</Label>
+                <Select value={selectedStock} onValueChange={setSelectedStock}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="판매할 주식을 선택하세요" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableTokens.filter((token) => (user.stocks?.[token.symbol] ?? 0) > 0)
+                      .length === 0 ? (
+                      <div className="p-2 text-sm text-muted-foreground">
+                        선택한 종목군에 보유한 주식이 없습니다.
+                      </div>
+                    ) : (
+                      availableTokens
+                        .filter((token) => (user.stocks?.[token.symbol] ?? 0) > 0)
+                        .map((token) => {
+                          const price =
+                            oraclePrices[token.symbol] ||
+                            oraclePrices[token.address.toLowerCase()] ||
+                            0;
+                          const quantity = user.stocks?.[token.symbol] ?? 0;
+                          return (
+                            <SelectItem key={token.symbol} value={token.symbol}>
+                              <div className="flex items-center gap-2">
+                                <TokenIcon icon={token.icon} name={token.name} size={20} />
+                                <span>{token.name}</span>
+                                <span className="text-muted-foreground">
+                                  ({quantity.toLocaleString()}주 보유)
+                                </span>
+                              </div>
+                            </SelectItem>
+                          );
+                        })
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             {selectedStock && userStockQuantity > 0 && (
               <>
@@ -489,17 +595,16 @@ export function BuyAssetsModal({ open, onClose }: BuyAssetsModalProps) {
                 <div className="space-y-2">
                   <Label>판매 수량 (주)</Label>
                   <Input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
                     placeholder="0"
-                    min="0"
-                    max={userStockQuantity}
-                    value={sellQuantity}
+                    value={formatNumberWithCommas(sellQuantity)}
                     onChange={(e) => {
-                      const val = e.target.value;
-                      if (val === '') {
+                      const numericValue = removeCommas(e.target.value);
+                      if (numericValue === '') {
                         setSellQuantity('');
                       } else {
-                        const numVal = Number.parseInt(val, 10);
+                        const numVal = Number.parseInt(numericValue, 10);
                         if (!isNaN(numVal) && numVal >= 0) {
                           // 보유 수량을 초과하지 않도록 제한
                           setSellQuantity(Math.min(numVal, userStockQuantity).toString());

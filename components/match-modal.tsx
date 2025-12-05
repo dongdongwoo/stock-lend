@@ -7,15 +7,32 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useStore } from '@/lib/store';
-import { mapCollateralTokens, CONTRACTS } from '@/lib/contracts/config';
+import {
+  mapCollateralTokens,
+  CONTRACTS,
+  getCollateralTokenByAddress,
+  CATEGORY_NAMES,
+} from '@/lib/contracts/config';
 import {
   useOraclePricesWagmi,
   useCollateralRiskParamsWagmi,
   useAllowedCollateralTokensWagmi,
+  useCategoryTokensWagmi,
   type UIBorrowOffer,
   type UILendOffer,
 } from '@/lib/hooks';
-import { takeBorrowOffer, takeLendOffer } from '@/lib/contracts/lending';
+import { takeBorrowOffer, takeLendOffer, getTokenCategory } from '@/lib/contracts/lending';
+
+// 종목군 ID를 문자로 변환 (1 -> A, 2 -> B, 3 -> C, ...)
+function categoryIdToLetter(categoryId: bigint | undefined | null): string {
+  if (categoryId === undefined || categoryId === null) {
+    return 'N/A';
+  }
+  const num = Number(categoryId);
+  if (num <= 0) return 'N/A';
+  // 1 -> A, 2 -> B, 3 -> C, ...
+  return String.fromCharCode(64 + num); // 65는 'A'의 ASCII 코드
+}
 import { approveTokenForLending, mintTokenByMaster } from '@/lib/contracts/tokens';
 import { getCustodyWalletAddress, ensureEthBalance } from '@/lib/wallet/custody';
 import { TransactionModal, type TxStep } from './transaction-modal';
@@ -51,6 +68,7 @@ export function MatchModal({ open, onClose, offer, type }: MatchModalProps) {
   const [txError, setTxError] = useState<string | null>(null);
   const [collateralInput, setCollateralInput] = useState('');
   const [selectedCollateralStock, setSelectedCollateralStock] = useState<string>('');
+  const [offerCategoryId, setOfferCategoryId] = useState<bigint | null>(null);
 
   const isBorrowOffer = type === 'borrow'; // 대출 상품 (Borrow탭에서 보이는 상품)
   const borrowOffer = offer as UIBorrowOffer;
@@ -61,72 +79,71 @@ export function MatchModal({ open, onClose, offer, type }: MatchModalProps) {
   const requiredCash = isBorrowOffer ? borrowOffer.loanAmount : 0;
   const requiredStock = !isBorrowOffer ? lendOffer.requestedCollateralStock : null;
 
-  // 종목군 정의 (대여 상품 매칭용)
-  const collateralGroups = [
-    { id: 'A', label: 'A군', ltv: 65, ltvBps: BigInt(6500) },
-    { id: 'B', label: 'B군', ltv: 60, ltvBps: BigInt(6000) },
-    { id: 'C', label: 'C군', ltv: 55, ltvBps: BigInt(5500) },
-  ];
+  // 대여 상품의 경우: categoryId를 직접 사용하거나 토큰 주소로부터 카테고리 조회
+  useEffect(() => {
+    if (!isBorrowOffer) {
+      // categoryId가 있으면 직접 사용
+      if (lendOffer.categoryId) {
+        setOfferCategoryId(lendOffer.categoryId);
+      } else if (lendOffer.collateralTokenAddress) {
+        // fallback: 토큰 주소로부터 카테고리 조회
+        getTokenCategory(lendOffer.collateralTokenAddress as `0x${string}`)
+          .then((categoryId) => {
+            setOfferCategoryId(categoryId);
+          })
+          .catch(() => {
+            // 에러 발생 시 토큰 정보에서 카테고리 찾기
+            const tokenInfo = getCollateralTokenByAddress(lendOffer.collateralTokenAddress!);
+            if (tokenInfo?.categoryId) {
+              setOfferCategoryId(tokenInfo.categoryId);
+            }
+          });
+      }
+    }
+  }, [isBorrowOffer, lendOffer.categoryId, lendOffer.collateralTokenAddress]);
 
-  // 대여 상품의 경우: 종목군에 해당하는 토큰들 필터링
-  const availableTokensForGroup =
-    !isBorrowOffer && requiredStock
-      ? collateralTokens.filter((token) => {
-          const tokenLtvBps =
-            riskParams[token.symbol]?.maxLtvBps ||
-            riskParams[token.address.toLowerCase()]?.maxLtvBps ||
-            riskParams[token.address]?.maxLtvBps ||
-            BigInt(0);
-          // LTV가 정확히 일치하는 토큰만 필터링 (약간의 오차 허용: ±1 bps)
-          // 대여 상품의 requestedCollateralStock의 LTV를 기준으로 종목군 찾기
-          const requestedStock = collateralTokens.find((s) => s.symbol === requiredStock);
-          const requestedLtvBps = requestedStock
-            ? riskParams[requestedStock.symbol]?.maxLtvBps ||
-              riskParams[requestedStock.address.toLowerCase()]?.maxLtvBps ||
-              riskParams[requestedStock.address]?.maxLtvBps ||
-              BigInt(0)
-            : BigInt(0);
-
-          return (
-            tokenLtvBps >= requestedLtvBps - BigInt(1) && tokenLtvBps <= requestedLtvBps + BigInt(1)
-          );
-        })
-      : [];
-
-  // 선택된 종목군 정보 (대여 상품용)
-  const requestedStock = !isBorrowOffer
-    ? collateralTokens.find((s) => s.symbol === requiredStock)
-    : null;
-  const requestedLtvBps = requestedStock
-    ? riskParams[requestedStock.symbol]?.maxLtvBps ||
-      riskParams[requestedStock.address.toLowerCase()]?.maxLtvBps ||
-      riskParams[requestedStock.address]?.maxLtvBps ||
-      BigInt(6000)
-    : BigInt(6000);
-  const requestedLtv = Number(requestedLtvBps) / 10000;
-  const selectedGroup = collateralGroups.find((g) => {
-    const diff =
-      g.ltvBps > requestedLtvBps ? g.ltvBps - requestedLtvBps : requestedLtvBps - g.ltvBps;
-    return diff <= BigInt(1);
-  });
+  // 대여 상품의 경우: 선택된 카테고리의 토큰 목록 조회
+  const { tokens: availableTokensForGroup } = useCategoryTokensWagmi(offerCategoryId);
 
   // 담보 토큰 정보 가져오기 (대출/대여 모두) - 온체인 데이터 사용
+  // 대출 상품의 경우: collateralTokenAddress로부터 직접 토큰 정보 가져오기
   // 대여 상품의 경우: 선택된 주식 사용, 없으면 첫 번째 사용 가능한 주식
   const collateralSymbol = isBorrowOffer
     ? borrowOffer.collateralStock
     : selectedCollateralStock || availableTokensForGroup[0]?.symbol || requiredStock || '';
-  const stock = collateralTokens.find((s) => s.symbol === collateralSymbol);
+
+  // 대출 상품의 경우: collateralTokenAddress로부터 직접 토큰 정보 가져오기
+  // 대여 상품의 경우: availableTokensForGroup에서 찾기
+  const stock = isBorrowOffer
+    ? borrowOffer.collateralTokenAddress
+      ? getCollateralTokenByAddress(borrowOffer.collateralTokenAddress) ||
+        collateralTokens.find((s) => s.symbol === collateralSymbol)
+      : collateralTokens.find((s) => s.symbol === collateralSymbol)
+    : availableTokensForGroup.find((t) => t.symbol === collateralSymbol) ||
+      collateralTokens.find((s) => s.symbol === collateralSymbol);
+
+  // 가격 조회: symbol, 주소(lowercase), 주소(원본) 순서로 시도
   const stockPrice = stock
-    ? oraclePrice[stock.symbol] || oraclePrice[stock.address.toLowerCase()] || 0
+    ? oraclePrice[stock.symbol] ||
+      oraclePrice[stock.address.toLowerCase()] ||
+      oraclePrice[stock.address] ||
+      0
     : 0;
 
-  // 온체인에서 LTV 가져오기 (주소 또는 symbol로 조회)
-  const maxLtvBps = stock
-    ? riskParams[stock.symbol]?.maxLtvBps ||
-      riskParams[stock.address.toLowerCase()]?.maxLtvBps ||
-      riskParams[stock.address]?.maxLtvBps ||
-      BigInt(6000)
-    : BigInt(6000);
+  // 온체인에서 LTV 가져오기: 주소 우선, symbol 다음
+  let maxLtvBps = BigInt(6000); // 기본값
+  if (stock) {
+    // 1. 토큰 주소로 조회 (우선순위 1)
+    if (riskParams[stock.address.toLowerCase()]?.maxLtvBps) {
+      maxLtvBps = riskParams[stock.address.toLowerCase()].maxLtvBps;
+    } else if (riskParams[stock.address]?.maxLtvBps) {
+      maxLtvBps = riskParams[stock.address].maxLtvBps;
+    }
+    // 2. symbol로 조회 (우선순위 2)
+    else if (riskParams[stock.symbol]?.maxLtvBps) {
+      maxLtvBps = riskParams[stock.symbol].maxLtvBps;
+    }
+  }
   const maxLtv = Number(maxLtvBps) / 10000; // bps to decimal (예: 7000 bps = 0.7 = 70%)
 
   // 대출 상품 매칭 시: 온체인 데이터로 LTV 계산
@@ -322,7 +339,14 @@ export function MatchModal({ open, onClose, offer, type }: MatchModalProps) {
         );
 
         // Step 3: 담보 → 담보 토큰 발행 (Master Mint)
-        await mintTokenByMaster('collateral', userAddress, collateralAmountInWei);
+        // borrower가 선택한 담보 토큰 주소 가져오기
+        const selectedCollateralToken = collateralTokens.find(
+          (s) => s.symbol === selectedCollateralStock,
+        );
+        if (!selectedCollateralToken) {
+          throw new Error('담보 토큰을 선택해주세요.');
+        }
+        await mintTokenByMaster('collateral', userAddress, collateralAmountInWei, selectedCollateralToken.address);
         setTxSteps((prev) =>
           prev.map((s) =>
             s.id === 'tokenize_collateral'
@@ -334,7 +358,8 @@ export function MatchModal({ open, onClose, offer, type }: MatchModalProps) {
         );
 
         // Step 4: 담보 토큰 Approve
-        await approveTokenForLending('collateral', collateralAmountInWei, user.id);
+        // selectedCollateralToken은 위에서 이미 정의됨
+        await approveTokenForLending('collateral', collateralAmountInWei, user.id, selectedCollateralToken.address);
         setTxSteps((prev) =>
           prev.map((s) =>
             s.id === 'approve'
@@ -347,7 +372,13 @@ export function MatchModal({ open, onClose, offer, type }: MatchModalProps) {
 
         // Step 5: takeLendOffer 컨트랙트 호출
         const offerId = lendOffer.onChainId;
-        const hash = await takeLendOffer(offerId, collateralAmountInWei, user.id);
+        // selectedCollateralToken은 위에서 이미 정의됨
+        const hash = await takeLendOffer(
+          offerId,
+          selectedCollateralToken.address as `0x${string}`,
+          collateralAmountInWei,
+          user.id,
+        );
         setTxHash(hash);
         setTxSteps((prev) =>
           prev.map((s) =>
@@ -402,12 +433,29 @@ export function MatchModal({ open, onClose, offer, type }: MatchModalProps) {
     );
   }
 
+  // 대출 상품의 경우: collateralTokenAddress로부터 직접 토큰 정보 가져오기
   const stockInfo = isBorrowOffer
-    ? collateralTokens.find((s) => s.symbol === borrowOffer.collateralStock)
-    : collateralTokens.find((s) => s.symbol === lendOffer.requestedCollateralStock);
+    ? borrowOffer.collateralTokenAddress
+      ? getCollateralTokenByAddress(borrowOffer.collateralTokenAddress) ||
+        collateralTokens.find((s) => s.symbol === borrowOffer.collateralStock)
+      : collateralTokens.find((s) => s.symbol === borrowOffer.collateralStock)
+    : // 대여 상품의 경우: availableTokensForGroup에서 찾기
+      availableTokensForGroup.find(
+        (t) => t.symbol === selectedCollateralStock || t.symbol === lendOffer.requestedCollateralStock,
+      ) ||
+      collateralTokens.find((s) => s.symbol === lendOffer.requestedCollateralStock);
+
+  // 트랜잭션 진행 중일 때는 모달 닫기 방지
+  const handleOpenChange = (newOpen: boolean) => {
+    // 트랜잭션이 진행 중이 아닐 때만 닫기 허용
+    if (!newOpen && !showTx) {
+      onClose();
+    }
+    // showTx가 true일 때는 닫기 무시 (TransactionModal에서 처리)
+  };
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isBorrowOffer ? '대여 확인' : '대출 확인'}</DialogTitle>
@@ -472,10 +520,8 @@ export function MatchModal({ open, onClose, offer, type }: MatchModalProps) {
                   <div className="border-t border-border my-2" />
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">담보 허용군</span>
-                    <span className="font-medium">
-                      {selectedGroup
-                        ? `${selectedGroup.label} (LTV ${selectedGroup.ltv}%)`
-                        : `LTV ${(requestedLtv * 100).toFixed(0)}%`}
+                    <span className="font-medium font-mono">
+                      {offerCategoryId !== null ? categoryIdToLetter(offerCategoryId) : 'N/A'}
                     </span>
                   </div>
                   <div className="flex justify-between">
@@ -506,7 +552,7 @@ export function MatchModal({ open, onClose, offer, type }: MatchModalProps) {
               {isBorrowOffer && (
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">LTV</span>
-                  <span>{borrowLTV}%</span>
+                  <span>{Number(borrowLTV).toFixed(1)}%</span>
                 </div>
               )}
               <div className="flex justify-between">
@@ -521,7 +567,7 @@ export function MatchModal({ open, onClose, offer, type }: MatchModalProps) {
           {!isBorrowOffer && (
             <div className="rounded-lg border border-border p-4 space-y-4">
               <div className="space-y-2">
-                <Label>B군 담보 주식 선택</Label>
+                <Label>담보 주식 선택</Label>
                 <Select value={selectedCollateralStock} onValueChange={setSelectedCollateralStock}>
                   <SelectTrigger>
                     <SelectValue placeholder="담보로 사용할 주식을 선택하세요" />
@@ -538,7 +584,7 @@ export function MatchModal({ open, onClose, offer, type }: MatchModalProps) {
                         return (
                           <SelectItem key={token.symbol} value={token.symbol}>
                             <div className="flex items-center gap-2">
-                              <span>{token.icon}</span>
+                              <TokenIcon icon={token.icon} name={token.name} size={20} />
                               <span>{token.name}</span>
                               <span className="text-muted-foreground">
                                 ({quantity.toLocaleString()}주 보유)
@@ -590,7 +636,7 @@ export function MatchModal({ open, onClose, offer, type }: MatchModalProps) {
                       Number(currentLTV) > 60 ? 'text-yellow-500' : 'text-primary'
                     }`}
                   >
-                    {currentLTV}%
+                    {Number(currentLTV).toFixed(1)}%
                   </span>
                 </div>
               </div>

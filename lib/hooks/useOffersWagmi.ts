@@ -48,7 +48,10 @@ function durationToDays(duration: bigint): number {
   return Math.ceil(Number(duration) / 86400);
 }
 
-function formatTokenAmount(amount: bigint, decimals: number = 18): number {
+function formatTokenAmount(amount: bigint | undefined | null, decimals: number = 18): number {
+  if (amount === undefined || amount === null) {
+    return 0;
+  }
   return Number(formatUnits(amount, decimals));
 }
 
@@ -129,11 +132,26 @@ function transformBorrowOffer(offer: any): UIBorrowOffer {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function transformLendOffer(offer: any): UILendOffer {
-  const collateralToken = getCollateralTokenByAddress(offer.collateralToken);
-  const lendToken = getLendTokenByAddress(offer.lendToken);
+  // categoryId로 변경됨 (collateralToken → categoryId)
+  const categoryId = offer.categoryId || offer[3]; // 인덱스 3이 categoryId
+  const lendToken = getLendTokenByAddress(offer.lendToken || offer[4]);
+
+  // 매칭된 경우 borrower의 담보 토큰 주소를 가져옴 (borrowOfferId가 있으면)
+  // 매칭 전에는 categoryId만 있고, 매칭 후에는 borrowOfferId가 있음
+  let collateralTokenAddress: string | null = null;
+  let requestedCollateralStock = `종목군 ${categoryId?.toString() || 'N/A'}`;
+  
+  // 매칭 전: categoryId만 표시 (실제 토큰 목록은 UI에서 동적으로 가져옴)
+  // 매칭 후: borrowOfferId가 있으면 borrowOffer에서 collateralToken을 가져와야 하지만,
+  // 여기서는 동기 함수이므로 일단 null로 설정하고, 필요시 UI에서 조회
+  if (offer.borrowOfferId && offer.borrowOfferId > BigInt(0)) {
+    // 매칭된 경우: borrowOffer를 조회해야 하지만 동기 함수이므로 null로 설정
+    // UI에서 borrowOffer를 조회하여 표시
+    collateralTokenAddress = null;
+  }
 
   // state 필드 접근: 필드 이름 또는 인덱스로 접근 시도
-  // 실제 컨트랙트 순서: id(0), lender(1), borrower(2), collateralToken(3), lendToken(4),
+  // 실제 컨트랙트 순서: id(0), lender(1), borrower(2), categoryId(3), lendToken(4),
   // collateralAmount(5), loanAmount(6), interestRateBps(7), earlyRepayFeeBps(8),
   // duration(9), createdAt(10), matchedAt(11), expiresAt(12), borrowOfferId(13), state(14)
   let stateValue = offer.state;
@@ -179,18 +197,19 @@ function transformLendOffer(offer: any): UILendOffer {
     lenderWallet: offer.lender,
     borrower:
       offer.borrower === '0x0000000000000000000000000000000000000000' ? null : offer.borrower,
-    requestedCollateralStock: collateralToken?.symbol || 'UNKNOWN',
-    collateralTokenAddress: offer.collateralToken,
-    collateralAmount: formatTokenAmount(offer.collateralAmount),
+    requestedCollateralStock,
+    categoryId: categoryId ? BigInt(categoryId) : BigInt(0),
+    collateralTokenAddress,
+    collateralAmount: formatTokenAmount(offer.collateralAmount ?? offer[5]),
     loanCurrency: lendToken?.symbol || 'dKRW',
-    lendTokenAddress: offer.lendToken,
-    loanAmount: formatTokenAmount(offer.loanAmount),
-    interestRate: bpsToPercent(offer.interestRateBps),
-    maturityDays: durationToDays(offer.duration),
+    lendTokenAddress: offer.lendToken || offer[4],
+    loanAmount: formatTokenAmount(offer.loanAmount ?? offer[6]),
+    interestRate: bpsToPercent(offer.interestRateBps || offer[7]),
+    maturityDays: durationToDays(offer.duration || offer[9]),
     status: offerStateToString(stateNum),
-    createdAt: Number(offer.createdAt) * 1000,
-    matchedAt: offer.matchedAt > BigInt(0) ? Number(offer.matchedAt) * 1000 : undefined,
-    expiresAt: offer.expiresAt > BigInt(0) ? Number(offer.expiresAt) * 1000 : undefined,
+    createdAt: Number(offer.createdAt || offer[10]) * 1000,
+    matchedAt: (offer.matchedAt || offer[11]) > BigInt(0) ? Number(offer.matchedAt || offer[11]) * 1000 : undefined,
+    expiresAt: (offer.expiresAt || offer[12]) > BigInt(0) ? Number(offer.expiresAt || offer[12]) * 1000 : undefined,
     borrowOfferId: offer.borrowOfferId !== undefined && offer.borrowOfferId > BigInt(0) ? offer.borrowOfferId : undefined,
     earlyRepayFeeBps,
   };
@@ -204,16 +223,21 @@ export function useBorrowOffersWagmi() {
     abi: lendingViewerAbi,
     functionName: 'getBorrowOffers',
     query: {
-      refetchInterval: 1500,
+      refetchInterval: 2000, // 2초마다 자동 갱신
       staleTime: 1000,
     },
   });
 
-  // wagmi는 tuple 배열을 반환할 때 data[0] 형태로 반환할 수 있음
+  // wagmi는 tuple 배열을 반환할 때 { data: ... } 형태로 반환
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const rawData = data as any;
+  // 반환값이 { data: ... } 형태인 경우 처리
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const offersArray: any[] = Array.isArray(rawData) ? rawData : rawData?.[0] || [];
+  const offersArray: any[] = Array.isArray(rawData) 
+    ? rawData 
+    : rawData?.data 
+    ? rawData.data 
+    : rawData?.[0] || [];
 
   // 디버깅: 첫 번째 offer의 구조 확인
   if (offersArray.length > 0) {
@@ -241,16 +265,21 @@ export function useLendOffersWagmi() {
     abi: lendingViewerAbi,
     functionName: 'getLendOffers',
     query: {
-      refetchInterval: 1500,
+      refetchInterval: 2000, // 2초마다 자동 갱신
       staleTime: 1000,
     },
   });
 
-  // wagmi는 tuple 배열을 반환할 때 data[0] 형태로 반환할 수 있음
+  // wagmi는 tuple 배열을 반환할 때 { data: ... } 형태로 반환
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const rawData = data as any;
+  // 반환값이 { data: ... } 형태인 경우 처리
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const offersArray: any[] = Array.isArray(rawData) ? rawData : rawData?.[0] || [];
+  const offersArray: any[] = Array.isArray(rawData) 
+    ? rawData 
+    : rawData?.data 
+    ? rawData.data 
+    : rawData?.[0] || [];
 
   // 디버깅: 첫 번째 offer의 구조 확인
   if (offersArray.length > 0) {

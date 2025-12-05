@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Header } from '@/components/header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -32,12 +32,27 @@ import {
   useLendOffersWagmi,
   useAllowedCollateralTokensWagmi,
   useUserLiquidations,
+  useCategoriesWagmi,
   type UIBorrowOffer,
   type UILendOffer,
 } from '@/lib/hooks';
-import { mapCollateralTokens } from '@/lib/contracts/config';
+import { mapCollateralTokens, CONTRACTS } from '@/lib/contracts/config';
+import { useReadContracts } from 'wagmi';
+import { lendingConfigAbi } from '@/lib/contracts/abis/lendingConfig';
 import { getCustodyWalletAddress } from '@/lib/wallet/custody';
 import { OfferState } from '@/lib/contracts/lending';
+import { TokenIcon } from '@/components/token-icon';
+
+// 종목군 ID를 문자로 변환 (1 -> A, 2 -> B, 3 -> C, ...)
+function categoryIdToLetter(categoryId: bigint | undefined | null): string {
+  if (categoryId === undefined || categoryId === null) {
+    return 'N/A';
+  }
+  const num = Number(categoryId);
+  if (num <= 0) return 'N/A';
+  // 1 -> A, 2 -> B, 3 -> C, ...
+  return String.fromCharCode(64 + num); // 65는 'A'의 ASCII 코드
+}
 import type { Position } from '@/lib/store';
 
 // 포지션의 고유 키 생성 (담보/대출금액/이자율/만기일 조합)
@@ -128,10 +143,51 @@ export default function PortfolioPage() {
 
   // 온체인 데이터 조회
   const { prices: onChainPrices } = useOraclePricesWagmi();
-  const { tokens: collateralTokenAddresses } = useAllowedCollateralTokensWagmi();
+  const { categories } = useCategoriesWagmi();
 
-  // 온체인에서 가져온 토큰 목록
+  // 각 카테고리 ID에 대해 getCategoryTokens() 호출 (포트폴리오 표시용)
+  const categoryTokensContracts = categories.map((category) => ({
+    address: CONTRACTS.lendingConfig as `0x${string}`,
+    abi: lendingConfigAbi,
+    functionName: 'getCategoryTokens' as const,
+    args: [category.id] as const,
+  }));
+
+  const { data: categoryTokensData, isLoading: isLoadingCategoryTokens } = useReadContracts({
+    contracts: categoryTokensContracts,
+    query: {
+      enabled: categories.length > 0,
+      refetchInterval: 30000,
+      staleTime: 10000,
+    },
+  });
+
+  // 모든 카테고리의 토큰 주소를 하나의 배열로 합치기 (중복 제거)
+  const allTokenAddressesSet = new Set<`0x${string}`>();
+
+  if (categoryTokensData) {
+    categoryTokensData.forEach((result) => {
+      if (result.status === 'success' && result.result) {
+        const tokenAddresses = result.result as `0x${string}`[];
+        if (Array.isArray(tokenAddresses)) {
+          tokenAddresses.forEach((addr) => {
+            allTokenAddressesSet.add(addr);
+          });
+        }
+      }
+    });
+  }
+
+  // 온체인 오퍼/포지션용 (기존 유지)
+  const { tokens: collateralTokenAddresses } = useAllowedCollateralTokensWagmi();
   const collateralTokens = mapCollateralTokens(collateralTokenAddresses);
+
+  // allCollateralTokens: categories에서 가져온 토큰이 있으면 사용, 없으면 fallback으로 allowedCollateralTokens 사용
+  const allCollateralTokens =
+    allTokenAddressesSet.size > 0
+      ? mapCollateralTokens(Array.from(allTokenAddressesSet))
+      : collateralTokens;
+
   const walletAddress = user ? getCustodyWalletAddress(user.id)?.toLowerCase() : null;
 
   // 내 대출/대여 오퍼 및 포지션 조회
@@ -162,8 +218,13 @@ export default function PortfolioPage() {
   // 대여 탭: useUserLendPositions + useLenderLoanPositions (lender로서)
   // 중요: 같은 포지션이 다른 onChainId로 올 수 있으므로 borrower/lender 주소 + 담보/대출금액/이자율/만기일로 식별
 
-  // 포지션의 실제 고유 키 생성 (borrower/lender 주소 + 담보/대출금액/이자율/만기일)
+  // 포지션의 실제 고유 키 생성 (onChainId 우선, 없으면 borrower/lender 주소 + 담보/대출금액/이자율/만기일)
   function getUniquePositionKey(position: UIBorrowOffer | UILendOffer, walletAddr: string): string {
+    // onChainId가 있으면 그것을 고유 키로 사용 (가장 확실한 방법)
+    if (position.onChainId !== undefined && position.onChainId !== null) {
+      return `onchain-${position.onChainId.toString()}`;
+    }
+
     const isBorrowOffer = 'collateralStock' in position;
     const borrowOffer = position as UIBorrowOffer;
     const lendOffer = position as UILendOffer;
@@ -189,63 +250,86 @@ export default function PortfolioPage() {
   if (walletAddress) {
     const walletAddr = walletAddress.toLowerCase();
 
-    // 대출 포지션: borrower로서의 포지션만 (고유 키 기준 중복 제거, UIBorrowOffer 우선)
-    const borrowerPositionsMap = new Map<string, UIBorrowOffer | UILendOffer>();
-    [...myBorrowPositions, ...borrowerLendPositions]
-      .filter((position) => {
-        // borrower인지 확인
-        const isBorrowOffer = 'collateralStock' in position;
-        const borrowOffer = position as UIBorrowOffer;
-        const lendOffer = position as UILendOffer;
-        const borrowerAddr = isBorrowOffer
-          ? borrowOffer.borrower.toLowerCase()
-          : lendOffer.borrower?.toLowerCase() || walletAddr;
-        return borrowerAddr === walletAddr;
-      })
-      .forEach((position) => {
-        const key = getUniquePositionKey(position, walletAddr);
-        if (!borrowerPositionsMap.has(key)) {
-          borrowerPositionsMap.set(key, position);
-        } else {
-          // UIBorrowOffer가 우선 (더 많은 정보 포함, onChainId가 Borrow Offer ID)
-          const existing = borrowerPositionsMap.get(key)!;
-          const isCurrentBorrowOffer = 'collateralStock' in position;
-          const isExistingBorrowOffer = 'collateralStock' in existing;
-          if (isCurrentBorrowOffer && !isExistingBorrowOffer) {
-            borrowerPositionsMap.set(key, position);
-          }
-        }
-      });
-    borrowerPositions = Array.from(borrowerPositionsMap.values());
+    // 1단계: 모든 포지션을 onChainId 기준으로 먼저 중복 제거 (전역 중복 제거)
+    // 매칭된 거래는 하나의 포지션으로 처리: BorrowOffer의 onChainId와 LendOffer의 borrowOfferId가 같으면 같은 포지션
+    const allPositionsMap = new Map<string, UIBorrowOffer | UILendOffer>();
+    const processedBorrowOfferIds = new Set<string>(); // 처리된 BorrowOffer의 onChainId 추적
 
-    // 대여 포지션: lender로서의 포지션만 (고유 키 기준 중복 제거)
-    const lenderPositionsMap = new Map<string, UIBorrowOffer | UILendOffer>();
-    [...myLendPositions, ...lenderLoanPositions]
-      .filter((position) => {
-        // lender인지 확인
-        const isBorrowOffer = 'collateralStock' in position;
-        const borrowOffer = position as UIBorrowOffer;
-        const lendOffer = position as UILendOffer;
-        const lenderAddr = isBorrowOffer
-          ? borrowOffer.lender?.toLowerCase() || walletAddr
-          : lendOffer.lender.toLowerCase();
-        return lenderAddr === walletAddr;
-      })
-      .forEach((position) => {
-        const key = getUniquePositionKey(position, walletAddr);
-        if (!lenderPositionsMap.has(key)) {
-          lenderPositionsMap.set(key, position);
-        } else {
-          // UIBorrowOffer가 우선 (더 많은 정보 포함)
-          const existing = lenderPositionsMap.get(key)!;
-          const isCurrentBorrowOffer = 'collateralStock' in position;
-          const isExistingBorrowOffer = 'collateralStock' in existing;
-          if (isCurrentBorrowOffer && !isExistingBorrowOffer) {
-            lenderPositionsMap.set(key, position);
-          }
+    // 먼저 BorrowOffer를 처리
+    const borrowOffers = [...myBorrowPositions, ...lenderLoanPositions].filter(
+      (p) => 'collateralStock' in p,
+    ) as UIBorrowOffer[];
+
+    borrowOffers.forEach((position) => {
+      if (position.onChainId !== undefined && position.onChainId !== null) {
+        const idKey = position.onChainId.toString();
+        if (!allPositionsMap.has(idKey)) {
+          allPositionsMap.set(idKey, position);
+          processedBorrowOfferIds.add(idKey);
         }
-      });
-    lenderPositions = Array.from(lenderPositionsMap.values());
+      } else {
+        // onChainId가 없으면 고유 키로 추가
+        const key = getUniquePositionKey(position, walletAddr);
+        if (!allPositionsMap.has(key)) {
+          allPositionsMap.set(key, position);
+        }
+      }
+    });
+
+    // 그 다음 LendOffer를 처리하되, borrowOfferId가 이미 처리된 BorrowOffer의 onChainId와 같으면 제외
+    const lendOffers = [
+      ...borrowerLendPositions,
+      ...myLendPositions,
+      ...lenderLoanPositions,
+    ].filter((p) => !('collateralStock' in p)) as UILendOffer[];
+
+    lendOffers.forEach((position) => {
+      // borrowOfferId가 있으면 이미 BorrowOffer로 처리된 포지션이므로 제외
+      if (position.borrowOfferId && position.borrowOfferId > BigInt(0)) {
+        const borrowOfferKey = position.borrowOfferId.toString();
+        // 이미 BorrowOffer로 처리된 포지션이 있으면 제외
+        if (processedBorrowOfferIds.has(borrowOfferKey)) {
+          return; // 이미 처리된 포지션이므로 제외
+        }
+      }
+
+      // borrowOfferId가 없거나, 해당 BorrowOffer가 없는 경우에만 포지션으로 추가
+      if (position.onChainId !== undefined && position.onChainId !== null) {
+        const idKey = position.onChainId.toString();
+        if (!allPositionsMap.has(idKey)) {
+          allPositionsMap.set(idKey, position);
+        }
+      } else {
+        // onChainId가 없으면 고유 키로 추가
+        const key = getUniquePositionKey(position, walletAddr);
+        if (!allPositionsMap.has(key)) {
+          allPositionsMap.set(key, position);
+        }
+      }
+    });
+
+    // 2단계: 중복 제거된 포지션들을 borrower/lender 기준으로 분류
+    const uniquePositions = Array.from(allPositionsMap.values());
+
+    borrowerPositions = uniquePositions.filter((position) => {
+      const isBorrowOffer = 'collateralStock' in position;
+      const borrowOffer = position as UIBorrowOffer;
+      const lendOffer = position as UILendOffer;
+      const borrowerAddr = isBorrowOffer
+        ? borrowOffer.borrower.toLowerCase()
+        : lendOffer.borrower?.toLowerCase() || walletAddr;
+      return borrowerAddr === walletAddr;
+    });
+
+    lenderPositions = uniquePositions.filter((position) => {
+      const isBorrowOffer = 'collateralStock' in position;
+      const borrowOffer = position as UIBorrowOffer;
+      const lendOffer = position as UILendOffer;
+      const lenderAddr = isBorrowOffer
+        ? borrowOffer.lender?.toLowerCase() || walletAddr
+        : lendOffer.lender.toLowerCase();
+      return lenderAddr === walletAddr;
+    });
   }
 
   // 상태별 필터링
@@ -257,22 +341,105 @@ export default function PortfolioPage() {
   const closedLendPositions = lenderPositions.filter((p) => p.status === 'closed');
   const [showLogin, setShowLogin] = useState(false);
   const [showBuy, setShowBuy] = useState(false);
-  const [editBorrowOffer, setEditBorrowOffer] = useState<BorrowOffer | null>(null);
-  const [editLendOffer, setEditLendOffer] = useState<LendOffer | null>(null);
-  const [cancelBorrowOffer, setCancelBorrowOffer] = useState<BorrowOffer | null>(null);
-  const [cancelLendOffer, setCancelLendOffer] = useState<LendOffer | null>(null);
+  const [editBorrowOfferId, setEditBorrowOfferId] = useState<string | null>(null);
+  const [editLendOfferId, setEditLendOfferId] = useState<string | null>(null);
+  const [cancelBorrowOfferId, setCancelBorrowOfferId] = useState<string | null>(null);
+  const [cancelLendOfferId, setCancelLendOfferId] = useState<string | null>(null);
   const [addCollateralPosition, setAddCollateralPosition] = useState<Position | null>(null);
   const [repayPosition, setRepayPosition] = useState<Position | null>(null);
 
-  // 주식 평가액 계산 (온체인 가격 × 클라이언트 단 보유 주식) - 온체인 토큰 목록 사용
+  // ID를 기반으로 최신 offer 찾기 (컨트랙트 데이터 업데이트 시 자동 동기화)
+  const editBorrowOffer = useMemo(() => {
+    if (!editBorrowOfferId) return null;
+    return allBorrowOffers.find((o) => o.id === editBorrowOfferId) || null;
+  }, [editBorrowOfferId, allBorrowOffers]);
+
+  const editLendOffer = useMemo(() => {
+    if (!editLendOfferId) return null;
+    return allLendOffers.find((o) => o.id === editLendOfferId) || null;
+  }, [editLendOfferId, allLendOffers]);
+
+  const cancelBorrowOffer = useMemo(() => {
+    if (!cancelBorrowOfferId) return null;
+    const offer = allBorrowOffers.find((o) => o.id === cancelBorrowOfferId);
+    if (!offer) return null;
+    // UIBorrowOffer를 BorrowOffer 형태로 변환 (CancelOfferModal이 기대하는 형태)
+    return {
+      id: offer.id,
+      borrowerId: offer.borrower,
+      collateralStock: offer.collateralStock,
+      collateralAmount: offer.collateralAmount,
+      loanCurrency: offer.loanCurrency,
+      loanAmount: offer.loanAmount,
+      interestRate: offer.interestRate,
+      maturityDays: offer.maturityDays,
+      ltv: offer.ltv || 0,
+      status: offer.status,
+      createdAt: offer.createdAt,
+    } as BorrowOffer;
+  }, [cancelBorrowOfferId, allBorrowOffers]);
+
+  const cancelLendOffer = useMemo(() => {
+    if (!cancelLendOfferId) return null;
+    const offer = allLendOffers.find((o) => o.id === cancelLendOfferId);
+    if (!offer) return null;
+    // UILendOffer를 LendOffer 형태로 변환 (CancelOfferModal이 기대하는 형태)
+    return {
+      id: offer.id,
+      lenderId: offer.lender,
+      loanCurrency: offer.loanCurrency,
+      loanAmount: offer.loanAmount,
+      requestedCollateralStock: offer.requestedCollateralStock,
+      interestRate: offer.interestRate,
+      maturityDays: offer.maturityDays,
+      status: offer.status,
+      createdAt: offer.createdAt,
+    } as LendOffer;
+  }, [cancelLendOfferId, allLendOffers]);
+
+  // 주식 평가액 계산 (온체인 가격 × 클라이언트 단 보유 주식) - 온체인에서 가져온 모든 토큰 사용
   const totalStockValue = user
-    ? collateralTokens.reduce((acc, token) => {
+    ? allCollateralTokens.reduce((acc, token) => {
         const quantity = user.stocks?.[token.symbol] || 0;
+        const addressLower = token.address.toLowerCase();
+        // 여러 방법으로 가격 조회 시도
         const price =
-          onChainPrices[token.symbol] || onChainPrices[token.address.toLowerCase()] || 0;
+          onChainPrices[token.symbol] ||
+          onChainPrices[addressLower] ||
+          onChainPrices[token.address] ||
+          0;
+
+        // 디버깅: 가격이 0인 경우 로그
+        if (quantity > 0 && price === 0) {
+          console.warn(`Portfolio: Price is 0 for ${token.symbol} (${addressLower})`, {
+            symbol: token.symbol,
+            address: token.address,
+            addressLower,
+            availablePrices: Object.keys(onChainPrices).filter(
+              (k) => k.toLowerCase() === addressLower || k === token.symbol,
+            ),
+            onChainPricesKeys: Object.keys(onChainPrices),
+          });
+        }
+
         return acc + quantity * price;
       }, 0)
     : 0;
+
+  // 디버깅: 전체 상태 확인
+  if (user) {
+    console.log('Portfolio totalStockValue calculation:', {
+      allCollateralTokensCount: allCollateralTokens.length,
+      allCollateralTokens: allCollateralTokens.map((t) => ({
+        symbol: t.symbol,
+        address: t.address.toLowerCase(),
+        quantity: user.stocks?.[t.symbol] || 0,
+        price: onChainPrices[t.symbol] || onChainPrices[t.address.toLowerCase()] || 0,
+      })),
+      onChainPricesKeys: Object.keys(onChainPrices),
+      totalStockValue,
+    });
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -327,24 +494,28 @@ export default function PortfolioPage() {
                   </div>
                 </div>
 
-                {/* 주식 보유 현황 (온체인 담보 토큰 목록) */}
+                {/* 주식 보유 현황 (config에 정의된 모든 토큰 표시) */}
                 <div className="mt-4">
                   <p className="text-sm text-muted-foreground mb-3">보유 주식</p>
                   <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                    {collateralTokens.map((token) => {
+                    {allCollateralTokens.map((token) => {
                       const quantity = user?.stocks?.[token.symbol] || 0;
+                      const addressLower = token.address.toLowerCase();
+                      // 여러 방법으로 가격 조회 시도
                       const price =
                         onChainPrices[token.symbol] ||
-                        onChainPrices[token.address.toLowerCase()] ||
+                        onChainPrices[addressLower] ||
+                        onChainPrices[token.address] ||
                         0;
                       const value = quantity * price;
+                      // 보유 수량이 0이어도 표시 (가격 정보 확인용)
                       return (
                         <div
                           key={token.address}
                           className="flex items-center justify-between rounded-lg border p-3"
                         >
                           <div className="flex items-center gap-2">
-                            <span>{token.icon}</span>
+                            <TokenIcon icon={token.icon} name={token.name} size={20} />
                             <div>
                               <p className="text-sm font-medium">{token.name}</p>
                               <p className="text-xs text-muted-foreground">
@@ -440,7 +611,7 @@ export default function PortfolioPage() {
                                     variant="outline"
                                     size="sm"
                                     className="flex-1 bg-transparent"
-                                    onClick={() => setEditBorrowOffer(offer as any)}
+                                    onClick={() => setEditBorrowOfferId(offer.id)}
                                   >
                                     수정
                                   </Button>
@@ -448,7 +619,7 @@ export default function PortfolioPage() {
                                     variant="destructive"
                                     size="sm"
                                     className="flex-1"
-                                    onClick={() => setCancelBorrowOffer(offer as any)}
+                                    onClick={() => setCancelBorrowOfferId(offer.id)}
                                   >
                                     취소
                                   </Button>
@@ -542,9 +713,6 @@ export default function PortfolioPage() {
                     ) : (
                       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                         {myLendOffers.map((offer) => {
-                          const token = collateralTokens.find(
-                            (t) => t.symbol === offer.requestedCollateralStock,
-                          );
                           return (
                             <Card key={offer.id}>
                               <CardContent className="p-4">
@@ -562,8 +730,10 @@ export default function PortfolioPage() {
                                     </span>
                                   </div>
                                   <div className="flex justify-between">
-                                    <span className="text-muted-foreground">요구 담보</span>
-                                    <span className="font-medium">{token?.name}</span>
+                                    <span className="text-muted-foreground">허용 담보 종목군</span>
+                                    <span className="font-medium font-mono">
+                                      {categoryIdToLetter(offer.categoryId)}군
+                                    </span>
                                   </div>
                                   <div className="flex justify-between">
                                     <span className="text-muted-foreground">이자율</span>
@@ -579,7 +749,7 @@ export default function PortfolioPage() {
                                     variant="outline"
                                     size="sm"
                                     className="flex-1 bg-transparent"
-                                    onClick={() => setEditLendOffer(offer as any)}
+                                    onClick={() => setEditLendOfferId(offer.id)}
                                   >
                                     수정
                                   </Button>
@@ -587,7 +757,7 @@ export default function PortfolioPage() {
                                     variant="destructive"
                                     size="sm"
                                     className="flex-1"
-                                    onClick={() => setCancelLendOffer(offer as any)}
+                                    onClick={() => setCancelLendOfferId(offer.id)}
                                   >
                                     취소
                                   </Button>
@@ -715,7 +885,9 @@ export default function PortfolioPage() {
                                 </span>
                               </div>
                               <div className="flex justify-between">
-                                <span className="text-muted-foreground">압류된 담보</span>
+                                <span className="text-muted-foreground">
+                                  청산자에게 인계된 담보
+                                </span>
                                 <span className="font-medium">
                                   {liquidation.collateralSeized.toLocaleString()}주
                                 </span>
@@ -754,25 +926,25 @@ export default function PortfolioPage() {
       <BuyAssetsModal open={showBuy} onClose={() => setShowBuy(false)} />
       <EditOfferModal
         open={!!editBorrowOffer}
-        onClose={() => setEditBorrowOffer(null)}
+        onClose={() => setEditBorrowOfferId(null)}
         offer={editBorrowOffer}
         type="borrow"
       />
       <EditOfferModal
         open={!!editLendOffer}
-        onClose={() => setEditLendOffer(null)}
+        onClose={() => setEditLendOfferId(null)}
         offer={editLendOffer}
         type="lend"
       />
       <CancelOfferModal
         open={!!cancelBorrowOffer}
-        onClose={() => setCancelBorrowOffer(null)}
+        onClose={() => setCancelBorrowOfferId(null)}
         offer={cancelBorrowOffer}
         type="borrow"
       />
       <CancelOfferModal
         open={!!cancelLendOffer}
-        onClose={() => setCancelLendOffer(null)}
+        onClose={() => setCancelLendOfferId(null)}
         offer={cancelLendOffer}
         type="lend"
       />

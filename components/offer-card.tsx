@@ -6,6 +6,18 @@ import { Badge } from "@/components/ui/badge"
 import { type UIBorrowOffer, type UILendOffer, useOraclePricesWagmi, useAllowedCollateralTokensWagmi } from "@/lib/hooks"
 import { mapCollateralTokens } from "@/lib/contracts/config"
 import { Clock, Percent, ArrowRight } from "lucide-react"
+import { TokenIcon } from "@/components/token-icon"
+
+// 종목군 ID를 문자로 변환 (1 -> A, 2 -> B, 3 -> C, ...)
+function categoryIdToLetter(categoryId: bigint | undefined | null): string {
+  if (categoryId === undefined || categoryId === null) {
+    return 'N/A';
+  }
+  const num = Number(categoryId);
+  if (num <= 0) return 'N/A';
+  // 1 -> A, 2 -> B, 3 -> C, ...
+  return String.fromCharCode(64 + num); // 65는 'A'의 ASCII 코드
+}
 
 interface OfferCardProps {
   offer: UIBorrowOffer | UILendOffer
@@ -54,7 +66,11 @@ export function OfferCard({
                 isBorrow ? "bg-orange-500/20 text-orange-500" : "bg-primary/20 text-primary"
               }`}
             >
-              <span className="text-lg">{collateralToken?.icon || (isBorrow ? "📉" : "📈")}</span>
+              {collateralToken?.icon ? (
+                <TokenIcon icon={collateralToken.icon} name={collateralToken.name} size={24} />
+              ) : (
+                <span className="text-lg">{isBorrow ? "📉" : "📈"}</span>
+              )}
             </div>
             <div>
               <p className="font-medium">{isBorrow ? "담보 대출" : "자금 대여"}</p>
@@ -103,8 +119,10 @@ export function OfferCard({
                 <span className="font-mono font-medium">{lendOffer.loanCurrency}</span>
               </div>
               <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">요구 담보</span>
-                <span className="font-mono">{collateralToken?.name || collateralSymbol}</span>
+                <span className="text-muted-foreground">허용 담보 종목군</span>
+                <span className="font-mono font-medium">
+                  {categoryIdToLetter(lendOffer.categoryId)}군
+                </span>
               </div>
             </>
           )}

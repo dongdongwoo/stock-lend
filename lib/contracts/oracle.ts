@@ -13,9 +13,9 @@ export async function getPrice(assetAddress: `0x${string}`): Promise<bigint> {
   return price;
 }
 
-// 담보토큰(한화) 가격 조회
-export async function getCollateralTokenPrice(): Promise<bigint> {
-  return getPrice(CONTRACTS.collateralToken);
+// 담보토큰(한화) 가격 조회 (deprecated - 특정 토큰 주소를 직접 사용하세요)
+export async function getCollateralTokenPrice(tokenAddress: `0x${string}`): Promise<bigint> {
+  return getPrice(tokenAddress);
 }
 
 // 대여토큰(원화) 가격 조회
@@ -24,27 +24,27 @@ export async function getLendTokenPrice(): Promise<bigint> {
 }
 
 // 가격 설정 (Owner만 가능 - Master Wallet 사용)
-export async function setPrice(
-  assetAddress: `0x${string}`,
-  price: bigint
-): Promise<`0x${string}`> {
+export async function setPrice(assetAddress: `0x${string}`, price: bigint): Promise<`0x${string}`> {
   // Oracle 가격 설정은 Owner(마스터 지갑)만 가능
   const walletClient = getMasterWalletClient();
-  
+
   const hash = await walletClient.writeContract({
     address: CONTRACTS.oracle,
     abi: oracleAbi,
     functionName: 'setPrice',
     args: [assetAddress, price],
   });
-  
+
   await waitForTransaction(hash);
   return hash;
 }
 
-// 담보토큰 가격 설정
-export async function setCollateralTokenPrice(price: bigint): Promise<`0x${string}`> {
-  return setPrice(CONTRACTS.collateralToken, price);
+// 담보토큰 가격 설정 (deprecated - 특정 토큰 주소를 직접 사용하세요)
+export async function setCollateralTokenPrice(
+  tokenAddress: `0x${string}`,
+  price: bigint,
+): Promise<`0x${string}`> {
+  return setPrice(tokenAddress, price);
 }
 
 // 대여토큰 가격 설정
@@ -61,4 +61,3 @@ export async function getOracleOwner(): Promise<`0x${string}`> {
   });
   return owner;
 }
-

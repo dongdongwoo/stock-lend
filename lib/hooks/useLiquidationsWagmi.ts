@@ -55,7 +55,7 @@ export function useUserLiquidations() {
     args: walletAddress ? [walletAddress as `0x${string}`] : undefined,
     query: {
       enabled: !!walletAddress,
-      refetchInterval: 1500,
+      refetchInterval: 2000, // 2초마다 자동 갱신
       staleTime: 1000,
     },
   });
@@ -88,7 +88,7 @@ export function useUserLiquidations() {
     contracts,
     query: {
       enabled: !!walletAddress && !!liquidationIdsArray && liquidationIdsArray.length > 0,
-      refetchInterval: 1500,
+      refetchInterval: 2000, // 2초마다 자동 갱신
       staleTime: 1000,
     },
   });
@@ -134,7 +134,6 @@ export function useUserLiquidations() {
   return {
     liquidations,
     loading: isLoadingIds || isLoadingData,
-    error: isErrorIds || isErrorData ? (errorIds || errorData) : null,
+    error: isErrorIds || isErrorData ? errorIds || errorData : null,
   };
 }
-

@@ -172,7 +172,10 @@ export function AddCollateralModal({ open, onClose, position }: AddCollateralMod
 
       // Step 3: 담보 → 담보 토큰 발행 (Master Mint)
       const collateralAmountInWei = parseUnits(addAmount.toString(), 18);
-      await mintTokenByMaster('collateral', userAddress, collateralAmountInWei);
+      if (!stock) {
+        throw new Error('담보 토큰 정보를 찾을 수 없습니다.');
+      }
+      await mintTokenByMaster('collateral', userAddress, collateralAmountInWei, stock.address);
       setTxSteps((prev) =>
         prev.map((s) =>
           s.id === 'tokenize'
@@ -184,7 +187,10 @@ export function AddCollateralModal({ open, onClose, position }: AddCollateralMod
       );
 
       // Step 4: 담보 토큰 Approve
-      await approveTokenForLending('collateral', collateralAmountInWei, user.id);
+      if (!stock) {
+        throw new Error('담보 토큰 정보를 찾을 수 없습니다.');
+      }
+      await approveTokenForLending('collateral', collateralAmountInWei, user.id, stock.address);
       setTxSteps((prev) =>
         prev.map((s) =>
           s.id === 'transfer'
@@ -255,8 +261,17 @@ export function AddCollateralModal({ open, onClose, position }: AddCollateralMod
     );
   }
 
+  // 트랜잭션 진행 중일 때는 모달 닫기 방지
+  const handleOpenChange = (newOpen: boolean) => {
+    // 트랜잭션이 진행 중이 아닐 때만 닫기 허용
+    if (!newOpen && !showTx) {
+      onClose();
+    }
+    // showTx가 true일 때는 닫기 무시 (TransactionModal에서 처리)
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">

@@ -36,9 +36,21 @@ export function TransactionModal({ open, onClose, title, steps, txHash, isComple
     }
   }
 
+  // 트랜잭션 진행 중일 때는 모달 닫기 방지
+  const handleOpenChange = (newOpen: boolean) => {
+    // 트랜잭션이 완료되었거나 에러가 발생한 경우에만 닫기 허용
+    if (!newOpen && (isComplete || error)) {
+      onClose();
+    }
+    // 진행 중일 때는 닫기 무시
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md max-h-[90vh] flex flex-col">
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent 
+        className="sm:max-w-md max-h-[90vh] flex flex-col"
+        showCloseButton={isComplete || !!error}
+      >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>

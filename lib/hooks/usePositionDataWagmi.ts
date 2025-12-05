@@ -14,7 +14,7 @@ export function usePositionDataWagmi(offerId: bigint | null) {
     args: offerId !== null ? [offerId] : undefined,
     query: {
       enabled: offerId !== null,
-      refetchInterval: 1500,
+      refetchInterval: 2000, // 2초마다 자동 갱신
       staleTime: 1000,
     },
   });
@@ -26,7 +26,7 @@ export function usePositionDataWagmi(offerId: bigint | null) {
     args: offerId !== null ? [offerId] : undefined,
     query: {
       enabled: offerId !== null,
-      refetchInterval: 1500,
+      refetchInterval: 2000, // 2초마다 자동 갱신
       staleTime: 1000,
     },
   });

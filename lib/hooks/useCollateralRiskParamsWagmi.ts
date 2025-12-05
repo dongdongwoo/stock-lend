@@ -31,7 +31,7 @@ export function useCollateralRiskParamsWagmi() {
     contracts,
     query: {
       enabled: collateralTokenAddresses.length > 0,
-      refetchInterval: 1500, // 1.5초마다 자동 갱신
+      refetchInterval: 2000, // 2초마다 자동 갱신
       staleTime: 1000,
     },
   });
