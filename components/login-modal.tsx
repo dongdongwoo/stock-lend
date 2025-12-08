@@ -76,7 +76,7 @@ export function LoginModal({ open, onClose }: LoginModalProps) {
         id: userId,
         username,
         wallet: custodyWallet.address, // 커스터디 월렛 주소 사용
-        cash: 10000000, // 1천만원 보유
+        cash: 30000000, // 3천만원 보유
         stocks,
       })
 

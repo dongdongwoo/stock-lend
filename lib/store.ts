@@ -264,7 +264,7 @@ export const useStore = create<AppState>()(
           id: userId,
           username,
           wallet: custodyWallet.address,
-          cash: 10000000, // 1천만원 보유
+          cash: 30000000, // 3천만원 보유
           stocks,
         };
 
