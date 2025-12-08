@@ -119,20 +119,28 @@ export function Header() {
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4">
           <div className="flex items-center gap-8">
             <Link href="/" className="flex items-center gap-3">
-              {/* 한화 로고 */}
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
+              {/* StockLend 로고 - SL 모노그램 (다크 모던 스타일) */}
+              <div className="flex h-10 w-10 items-center justify-center rounded-full overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 shadow-lg">
                 <svg
-                  width="28"
-                  height="28"
-                  viewBox="0 0 28 28"
+                  width="40"
+                  height="40"
+                  viewBox="0 0 40 40"
                   fill="none"
                   xmlns="http://www.w3.org/2000/svg"
-                  className="text-primary-foreground"
                 >
-                  {/* 한화 로고 스타일 - H 문자 형태 */}
+                  {/* SL 모노그램 - 스타일화된 S */}
                   <path
-                    d="M8 6V22M8 14H20M20 6V22"
-                    stroke="currentColor"
+                    d="M10 16C10 13.5 12 11.5 14.5 11.5C17 11.5 19 13.5 19 16C19 18.5 17 20.5 14.5 20.5C12 20.5 10 22.5 10 25C10 27.5 12 29.5 14.5 29.5C17 29.5 19 27.5 19 25"
+                    stroke="white"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    fill="none"
+                  />
+                  {/* SL 모노그램 - 스타일화된 L */}
+                  <path
+                    d="M23 10V26M23 26L30 26"
+                    stroke="white"
                     strokeWidth="2.5"
                     strokeLinecap="round"
                     strokeLinejoin="round"
