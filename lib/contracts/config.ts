@@ -31,9 +31,9 @@ export const CONTRACTS = {
   // 대여토큰
   lendToken: '0x186E976A133d2592C0c1818Fdf4887d9A23329cD' as `0x${string}`, // 원화 S.C (dKRW)
   // 컨트랙트
-  lending: '0xAbe1D4e3fFe6eCb49871A281cd477405CC2Cc3F9' as `0x${string}`,
-  lendingViewer: '0xD69120d1673443EF0DDF01328361Eef2A22E8476' as `0x${string}`,
-  lendingConfig: '0xe3133C0d090b47801098151861205985B06e0578' as `0x${string}`,
+  lending: '0xEF7B076977d446623064A3BAcc213bbf2043B02b' as `0x${string}`,
+  lendingViewer: '0xEdb4487b496e32C67b7b827858a8C26DBDFBD70D' as `0x${string}`,
+  lendingConfig: '0x1e9EF36D9Cc92246D5698d94992A91603B47CB4e' as `0x${string}`,
 } as const;
 
 // 토큰 주소 → UI 심볼 매핑

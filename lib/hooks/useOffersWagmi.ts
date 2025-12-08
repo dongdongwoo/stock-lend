@@ -71,19 +71,8 @@ function transformBorrowOffer(offer: any): UIBorrowOffer {
   // earlyRepayFeeBps(14), interestPaid(15), state(16)
   let stateValue = offer.state;
 
-  // state가 없거나 0인 경우 디버깅
+  // state가 없거나 0인 경우 배열 형태인 경우 인덱스로 접근 시도
   if (stateValue === undefined || stateValue === null || Number(stateValue) === 0) {
-    console.warn('BorrowOffer state issue:', {
-      id: offer.id?.toString(),
-      state: offer.state,
-      stateValue,
-      offerKeys: Object.keys(offer),
-      isArray: Array.isArray(offer),
-      offerLength: Array.isArray(offer) ? offer.length : undefined,
-      stateAtIndex16: Array.isArray(offer) ? offer[16] : undefined,
-      fullOffer: offer,
-    });
-
     // 배열 형태인 경우 인덱스로 접근 시도
     if (Array.isArray(offer) && offer[16] !== undefined) {
       stateValue = offer[16];
@@ -156,20 +145,8 @@ function transformLendOffer(offer: any): UILendOffer {
   // duration(9), createdAt(10), matchedAt(11), expiresAt(12), borrowOfferId(13), state(14)
   let stateValue = offer.state;
 
-  // state가 없거나 0인 경우 디버깅
+  // state가 없거나 0인 경우 배열 형태인 경우 인덱스로 접근 시도 (state는 14번째, 인덱스 14)
   if (stateValue === undefined || stateValue === null || Number(stateValue) === 0) {
-    console.warn('LendOffer state issue:', {
-      id: offer.id?.toString(),
-      state: offer.state,
-      stateValue,
-      offerKeys: Object.keys(offer),
-      isArray: Array.isArray(offer),
-      offerLength: Array.isArray(offer) ? offer.length : undefined,
-      // 배열인 경우 인덱스로 접근 시도 (state는 14번째, 인덱스 14)
-      stateAtIndex14: Array.isArray(offer) ? offer[14] : undefined,
-      fullOffer: offer,
-    });
-
     // 배열 형태인 경우 인덱스로 접근 시도 (state는 14번째, 인덱스 14)
     if (Array.isArray(offer) && offer[14] !== undefined) {
       stateValue = offer[14];
@@ -239,15 +216,6 @@ export function useBorrowOffersWagmi() {
     ? rawData.data 
     : rawData?.[0] || [];
 
-  // 디버깅: 첫 번째 offer의 구조 확인
-  if (offersArray.length > 0) {
-    console.log('First borrow offer structure:', {
-      keys: Object.keys(offersArray[0]),
-      values: Object.values(offersArray[0]),
-      full: offersArray[0],
-    });
-  }
-
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const offers: UIBorrowOffer[] = offersArray.map(transformBorrowOffer);
 
@@ -280,15 +248,6 @@ export function useLendOffersWagmi() {
     : rawData?.data 
     ? rawData.data 
     : rawData?.[0] || [];
-
-  // 디버깅: 첫 번째 offer의 구조 확인
-  if (offersArray.length > 0) {
-    console.log('First lend offer structure:', {
-      keys: Object.keys(offersArray[0]),
-      values: Object.values(offersArray[0]),
-      full: offersArray[0],
-    });
-  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const offers: UILendOffer[] = offersArray.map(transformLendOffer);

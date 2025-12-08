@@ -35,16 +35,6 @@ export function useAllowedCollateralTokensWagmi() {
     }
   }
 
-  // 디버깅
-  if (!isLoading) {
-    console.log('useAllowedCollateralTokensWagmi:', {
-      rawData,
-      tokensArray: tokensArray.map((a) => a.toLowerCase()),
-      error: error?.message,
-      isError,
-    });
-  }
-
   return {
     tokens: tokensArray,
     isLoading,

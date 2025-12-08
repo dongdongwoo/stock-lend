@@ -50,6 +50,7 @@ import type { UIBorrowOffer, UILendOffer } from '@/lib/hooks';
 import { mintTokenByMaster, approveTokenForLending } from '@/lib/contracts/tokens';
 import { getCustodyWalletAddress, ensureEthBalance } from '@/lib/wallet/custody';
 import { TokenIcon } from '@/components/token-icon';
+import { formatNumberWithCommas, removeCommas } from '@/lib/utils';
 
 // 컨트랙트 데이터 조회 섹션
 function ContractDataSection() {
@@ -419,14 +420,28 @@ function OnChainPositionCard({
       ? debtValue / (position.collateralAmount * liquidationThreshold)
       : 0;
 
-  const isLiquidatable = healthFactor < 1.0 && position.status === 'open' && isActiveOnChain;
-  const isAtRisk = healthFactor < 1.2 && position.status === 'open' && isActiveOnChain;
+  // healthFactor가 유효한 값(> 0)일 때만 상태 계산 (초기값 0일 때는 계산하지 않음)
+  const isLiquidatable =
+    healthFactor > 0 && healthFactor < 1.0 && position.status === 'open' && isActiveOnChain;
+  // 위험 포지션: 청산 가능 포지션(healthFactor < 1.0)은 제외하고, 1.0 <= healthFactor < 1.2인 경우만
+  const isAtRisk =
+    healthFactor > 0 &&
+    !isLiquidatable &&
+    healthFactor < 1.2 &&
+    position.status === 'open' &&
+    isActiveOnChain;
 
   // 이전 상태를 추적하여 실제로 변경된 경우에만 호출
   const prevStatusRef = useRef<{ isLiquidatable: boolean; isAtRisk: boolean } | null>(null);
 
   // 상태 변경을 상위 컴포넌트에 알림 (실제로 변경된 경우에만)
+  // healthFactor가 유효한 값(> 0)일 때만 상태를 업데이트
   useEffect(() => {
+    // healthFactor가 로드되지 않았으면 상태 업데이트하지 않음
+    if (healthFactor <= 0) {
+      return;
+    }
+
     if (
       onStatusChange &&
       (!prevStatusRef.current ||
@@ -436,7 +451,7 @@ function OnChainPositionCard({
       prevStatusRef.current = { isLiquidatable, isAtRisk };
       onStatusChange(position.id, isLiquidatable, isAtRisk);
     }
-  }, [position.id, isLiquidatable, isAtRisk]); // onStatusChange를 의존성에서 제거
+  }, [position.id, isLiquidatable, isAtRisk, healthFactor, onStatusChange]);
 
   // 렌더링 여부를 상위 컴포넌트에 알림 (borrowOfferData가 로드된 후에만)
   const prevIsActiveRef = useRef<boolean | null>(null);
@@ -601,6 +616,23 @@ export default function AdminPage() {
     (status) => status.isLiquidatable,
   ).length;
 
+  // 포지션 상태를 미리 계산하기 위한 숨겨진 컴포넌트 (탭을 열지 않아도 상태 계산)
+  const HiddenPositionStatusCalculator = () => {
+    return (
+      <div style={{ display: 'none' }}>
+        {openPositions.map((position) => (
+          <OnChainPositionCard
+            key={`hidden-${position.id}`}
+            position={position}
+            onLiquidate={() => {}}
+            onStatusChange={handlePositionStatusChange}
+            onRender={() => {}}
+          />
+        ))}
+      </div>
+    );
+  };
+
   const [isAuthed, setIsAuthed] = useState(false);
   const [authCode, setAuthCode] = useState('');
   const [selectedToken, setSelectedToken] = useState<`0x${string}` | null>(null);
@@ -660,7 +692,7 @@ export default function AdminPage() {
   };
 
   const handlePriceUpdate = async () => {
-    const priceValue = Number.parseFloat(newPrice);
+    const priceValue = Number.parseFloat(removeCommas(newPrice));
     if (isNaN(priceValue) || priceValue <= 0) return;
     if (!selectedTokenInfo) return;
 
@@ -931,10 +963,6 @@ export default function AdminPage() {
             </div>
             <span className="text-lg font-semibold">Admin Panel</span>
           </div>
-          <Badge variant="outline" className="gap-1">
-            <div className="h-2 w-2 rounded-full bg-primary" />
-            Connected
-          </Badge>
         </div>
       </header>
 
@@ -1062,11 +1090,19 @@ export default function AdminPage() {
                 <div className="space-y-2">
                   <Label>새 가격 (KRW)</Label>
                   <Input
-                    type="number"
-                    value={newPrice}
-                    onChange={(e) => setNewPrice(e.target.value)}
+                    type="text"
+                    value={formatNumberWithCommas(newPrice)}
+                    onChange={(e) => {
+                      const numericValue = removeCommas(e.target.value);
+                      if (
+                        numericValue === '' ||
+                        (!isNaN(Number(numericValue)) && Number(numericValue) >= 0)
+                      ) {
+                        setNewPrice(numericValue);
+                      }
+                    }}
                     className="w-48"
-                    placeholder="예: 45000"
+                    placeholder="예: 45,000"
                   />
                 </div>
                 <div className="space-y-2">
@@ -1122,6 +1158,9 @@ export default function AdminPage() {
           </Card>
         </div>
 
+        {/* 포지션 상태를 미리 계산하기 위한 숨겨진 컴포넌트 */}
+        <HiddenPositionStatusCalculator />
+
         <Tabs defaultValue="contract-data">
           <TabsList className="mb-6">
             <TabsTrigger value="contract-data" className="gap-2">
@@ -1149,12 +1188,57 @@ export default function AdminPage() {
                 </CardContent>
               </Card>
             ) : (
-              <ActivePositionsList
-                positions={openPositions}
-                onLiquidate={handleLiquidate}
-                onStatusChange={handlePositionStatusChange}
-                onCountChange={setRenderedActivePositionsCount}
-              />
+              <Tabs defaultValue="safe" className="w-full">
+                <TabsList className="mb-4">
+                  <TabsTrigger value="safe">
+                    안전 (
+                    {
+                      openPositions.filter((p) => {
+                        const status = positionStatuses[p.id];
+                        // 상태가 없거나 안전한 경우 안전 탭에 표시
+                        return !status || (!status.isLiquidatable && !status.isAtRisk);
+                      }).length
+                    }
+                    )
+                  </TabsTrigger>
+                  <TabsTrigger value="at-risk">위험 ({atRiskCount})</TabsTrigger>
+                  <TabsTrigger value="liquidatable">청산 가능 ({liquidatableCount})</TabsTrigger>
+                </TabsList>
+                <TabsContent value="safe">
+                  <ActivePositionsList
+                    positions={openPositions.filter((p) => {
+                      const status = positionStatuses[p.id];
+                      // 상태가 없거나 안전한 경우 안전 탭에 표시
+                      return !status || (!status.isLiquidatable && !status.isAtRisk);
+                    })}
+                    onLiquidate={handleLiquidate}
+                    onStatusChange={handlePositionStatusChange}
+                    onCountChange={setRenderedActivePositionsCount}
+                  />
+                </TabsContent>
+                <TabsContent value="at-risk">
+                  <ActivePositionsList
+                    positions={openPositions.filter((p) => {
+                      const status = positionStatuses[p.id];
+                      return status?.isAtRisk === true;
+                    })}
+                    onLiquidate={handleLiquidate}
+                    onStatusChange={handlePositionStatusChange}
+                    onCountChange={setRenderedActivePositionsCount}
+                  />
+                </TabsContent>
+                <TabsContent value="liquidatable">
+                  <ActivePositionsList
+                    positions={openPositions.filter((p) => {
+                      const status = positionStatuses[p.id];
+                      return status?.isLiquidatable === true;
+                    })}
+                    onLiquidate={handleLiquidate}
+                    onStatusChange={handlePositionStatusChange}
+                    onCountChange={setRenderedActivePositionsCount}
+                  />
+                </TabsContent>
+              </Tabs>
             )}
           </TabsContent>
         </Tabs>

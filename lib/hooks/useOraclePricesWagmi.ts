@@ -53,8 +53,6 @@ export function useOraclePricesWagmi() {
             allTokenAddressesSet.add(addr);
           });
         }
-      } else if (result.status === 'failure') {
-        console.warn(`Failed to get tokens for category ${categories[index]?.name}:`, result.error);
       }
     });
   }
@@ -99,39 +97,6 @@ export function useOraclePricesWagmi() {
   // 결과를 OraclePrices 형태로 변환
   const prices: OraclePrices = { ...cachedPrices, lastUpdated: Date.now() };
 
-  // 디버깅: 토큰 주소 목록 확인
-  if (!isLoading) {
-    console.log('useOraclePricesWagmi:', {
-      categories: categories.map((c) => ({ id: c.id.toString(), name: c.name })),
-      categoryTokensData: categoryTokensData?.map((result, index) => ({
-        category: categories[index]?.name,
-        status: result?.status,
-        tokenCount:
-          result?.status === 'success' && Array.isArray(result.result) ? result.result.length : 0,
-        tokens:
-          result?.status === 'success' && Array.isArray(result.result)
-            ? (result.result as `0x${string}`[]).map((a) => a.toLowerCase())
-            : [],
-        error: result?.error,
-      })),
-      collateralTokenAddresses: collateralTokenAddresses.map((a) => a.toLowerCase()),
-      priceContractsCount: priceContracts.length,
-      dataLength: data?.length,
-      data: data?.map((result, index) => ({
-        index,
-        status: result?.status,
-        price:
-          result?.status === 'success' && result.result
-            ? Number(formatUnits(result.result as unknown as bigint, 18))
-            : null,
-        error: result?.error,
-        tokenAddress: collateralTokenAddresses[index]?.toLowerCase(),
-      })),
-      error: error?.message,
-      isError,
-    });
-  }
-
   // 가격 데이터가 성공적으로 로드되었을 때만 업데이트
   useEffect(() => {
     if (
@@ -164,15 +129,11 @@ export function useOraclePricesWagmi() {
               const tokenInfo = getCollateralTokenByAddress(tokenAddress);
               if (tokenInfo) {
                 newPrices[tokenInfo.symbol] = priceValue;
-                console.log(`Price for ${tokenInfo.symbol} (${addressLower}):`, priceValue);
               } else {
                 // config에 없으면 TOKEN_ADDRESS_TO_SYMBOL에서 찾기
                 const symbol = TOKEN_ADDRESS_TO_SYMBOL[addressLower];
                 if (symbol) {
                   newPrices[symbol] = priceValue;
-                  console.log(`Price for ${symbol} (${addressLower}) from mapping:`, priceValue);
-                } else {
-                  console.warn(`Token info not found for address: ${addressLower}`);
                 }
               }
               hasUpdates = true;
@@ -208,10 +169,6 @@ export function useOraclePricesWagmi() {
               }
             } else {
               // 이전 가격도 없으면 0으로 설정
-              console.warn(`Failed to get price for ${addressLower}:`, {
-                status: result.status,
-                error: result.error,
-              });
               newPrices[addressLower] = 0;
               newPrices[tokenAddress] = 0;
               const tokenInfo = getCollateralTokenByAddress(tokenAddress);

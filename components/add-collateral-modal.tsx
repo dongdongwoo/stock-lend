@@ -15,6 +15,7 @@ import { useStore, type Position } from '@/lib/store';
 import { mapCollateralTokens } from '@/lib/contracts/config';
 import { TransactionModal, type TxStep } from './transaction-modal';
 import { Plus, TrendingUp } from 'lucide-react';
+import { formatNumberWithCommas, removeCommas } from '@/lib/utils';
 import {
   useOraclePricesWagmi,
   usePositionDataWagmi,
@@ -330,9 +331,14 @@ export function AddCollateralModal({ open, onClose, position }: AddCollateralMod
             <Label>추가할 담보 수량</Label>
             <div className="flex items-center gap-2">
               <Input
-                type="number"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                type="text"
+                value={formatNumberWithCommas(amount)}
+                onChange={(e) => {
+                  const numericValue = removeCommas(e.target.value);
+                  if (numericValue === '' || (!isNaN(Number(numericValue)) && Number(numericValue) >= 0)) {
+                    setAmount(numericValue);
+                  }
+                }}
                 placeholder="0"
                 min="1"
                 max={userStockBalance}

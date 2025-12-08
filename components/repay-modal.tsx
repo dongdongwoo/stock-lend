@@ -15,6 +15,7 @@ import { useStore, type Position } from '@/lib/store';
 import { mapCollateralTokens } from '@/lib/contracts/config';
 import { TransactionModal, type TxStep } from './transaction-modal';
 import { Banknote, CheckCircle2 } from 'lucide-react';
+import { formatNumberWithCommas, removeCommas } from '@/lib/utils';
 import {
   useOraclePricesWagmi,
   usePositionDataWagmi,
@@ -540,9 +541,14 @@ export function RepayModal({ open, onClose, position }: RepayModalProps) {
             <Label>상환 금액</Label>
             <div className="flex items-center gap-2">
               <Input
-                type="number"
-                value={amount}
-                onChange={(e) => handleAmountChange(e.target.value)}
+                type="text"
+                value={formatNumberWithCommas(amount)}
+                onChange={(e) => {
+                  const numericValue = removeCommas(e.target.value);
+                  if (numericValue === '' || (!isNaN(Number(numericValue)) && Number(numericValue) >= 0)) {
+                    handleAmountChange(numericValue);
+                  }
+                }}
                 placeholder="0"
                 min="1"
                 disabled={isFullRepayMode}
@@ -590,7 +596,9 @@ export function RepayModal({ open, onClose, position }: RepayModalProps) {
                 </div>
                 {isBeforeMaturity && (
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">중도상환수수료</span>
+                    <span className="text-muted-foreground">
+                      중도상환수수료 {earlyRepayFeeRate > 0 ? `(${(earlyRepayFeeRate * 100).toFixed(1)}%)` : ''}
+                    </span>
                     <span
                       className={`font-mono ${
                         earlyRepayFee > 0 ? 'text-orange-500' : 'text-muted-foreground'

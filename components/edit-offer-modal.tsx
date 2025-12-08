@@ -794,7 +794,7 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
           <DialogDescription>
             {isBorrow
               ? '담보 수량, 대출 금액, 이자율, 만기를 수정할 수 있습니다. 담보 종류는 변경할 수 없습니다.'
-              : '대여 금액, 종목군, 이자율, 만기를 수정할 수 있습니다. 대여 통화(원화)는 변경할 수 없습니다.'}
+              : '대여 금액, 종목군, 이자율, 만기를 수정할 수 있습니다. 대여 통화(dKRW)는 변경할 수 없습니다.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -922,7 +922,7 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
                 <Label className="text-muted-foreground">대여 통화 (수정 불가)</Label>
                 <div className="flex items-center gap-2 rounded-lg border bg-secondary/50 p-3">
                   <span className="text-xl">🇰🇷</span>
-                  <span className="font-medium">원화 (KRW)</span>
+                  <span className="font-medium">dKRW</span>
                 </div>
               </div>
 
@@ -989,7 +989,7 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
               {/* 담보 가능 토큰 목록 */}
               {selectedCategoryId && (
                 <div className="space-y-2">
-                  <Label>담보 가능 토큰 목록</Label>
+                  <Label>담보 가능 주식 목록</Label>
                   <div className="rounded-lg border bg-secondary/50 p-3">
                     {availableTokens.length === 0 ? (
                       <p className="text-sm text-muted-foreground">
@@ -1030,7 +1030,12 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
 
           {/* 이자율 */}
           <div className="space-y-2">
-            <Label>연 이자율 (%)</Label>
+            <div className="flex items-center justify-between">
+              <Label>연 이자율 (%)</Label>
+              <span className="font-mono text-sm font-medium">
+                {interestRate !== '' ? `${Number(interestRate).toFixed(1)}%` : '-'}
+              </span>
+            </div>
             <div className="relative">
               <Input
                 type="number"
@@ -1041,7 +1046,7 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
                     setInterestRate('');
                   } else {
                     const numVal = Number.parseFloat(val);
-                    if (!isNaN(numVal) && numVal >= 0 && numVal <= 30) {
+                    if (!isNaN(numVal) && numVal >= 0 && numVal <= 20) {
                       setInterestRate(val);
                     }
                   }
@@ -1049,13 +1054,35 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
                 placeholder="0"
                 step="0.1"
                 min="0"
-                max="30"
+                max="20"
                 className="pr-8"
               />
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
                 %
               </span>
             </div>
+            {/* 만기까지 예상 이자 표시 (연이자율 기준) */}
+            {interestRate &&
+              Number(interestRate) > 0 &&
+              maturityDays > 0 &&
+              ((isBorrow && loanAmount && Number.parseFloat(loanAmount) > 0) ||
+                (!isBorrow && cashAmount && Number.parseFloat(cashAmount) > 0)) && (
+                <div className="flex items-center justify-between rounded-lg border bg-secondary/50 p-2">
+                  <span className="text-sm text-muted-foreground">만기까지 예상 이자</span>
+                  <span className="font-medium text-primary">
+                    ₩
+                    {(
+                      (isBorrow && loanAmount
+                        ? Number.parseFloat(loanAmount)
+                        : !isBorrow && cashAmount
+                        ? Number.parseFloat(cashAmount)
+                        : 0) *
+                      (Number(interestRate) / 100) *
+                      (maturityDays / 365)
+                    ).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+              )}
           </div>
 
           {/* 만기 */}
@@ -1095,7 +1122,7 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
                 type="number"
                 step="0.1"
                 min="0"
-                max="100"
+                max="10"
                 placeholder="0"
                 value={earlyRepayFee}
                 onChange={(e) => {
@@ -1104,7 +1131,7 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
                     setEarlyRepayFee('');
                   } else {
                     const numVal = Number.parseFloat(val);
-                    if (!isNaN(numVal) && numVal >= 0 && numVal <= 100) {
+                    if (!isNaN(numVal) && numVal >= 0 && numVal <= 10) {
                       setEarlyRepayFee(val);
                     }
                   }
@@ -1116,7 +1143,7 @@ export function EditOfferModal({ open, onClose, offer, type }: EditOfferModalPro
               </span>
             </div>
             <p className="text-xs text-muted-foreground">
-              만기 전 상환 시 원금 대비 수수료 (0% ~ 100% 범위에서 설정 가능)
+              만기 전 상환 시 원금 대비 수수료 (0% ~ 10% 범위에서 설정 가능)
             </p>
           </div>
 

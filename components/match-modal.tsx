@@ -37,6 +37,7 @@ import { approveTokenForLending, mintTokenByMaster } from '@/lib/contracts/token
 import { getCustodyWalletAddress, ensureEthBalance } from '@/lib/wallet/custody';
 import { TransactionModal, type TxStep } from './transaction-modal';
 import { AlertCircle, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { TokenIcon } from '@/components/token-icon';
 import {
   Select,
   SelectContent,
@@ -69,6 +70,7 @@ export function MatchModal({ open, onClose, offer, type }: MatchModalProps) {
   const [collateralInput, setCollateralInput] = useState('');
   const [selectedCollateralStock, setSelectedCollateralStock] = useState<string>('');
   const [offerCategoryId, setOfferCategoryId] = useState<bigint | null>(null);
+  const [isInitialized, setIsInitialized] = useState(false);
 
   const isBorrowOffer = type === 'borrow'; // 대출 상품 (Borrow탭에서 보이는 상품)
   const borrowOffer = offer as UIBorrowOffer;
@@ -158,18 +160,31 @@ export function MatchModal({ open, onClose, offer, type }: MatchModalProps) {
     !isBorrowOffer && stockPrice > 0 ? Math.ceil(lendOffer.loanAmount / stockPrice / maxLtv) : 0;
   const minCollateralValue = minCollateralAmount * stockPrice;
 
+  // 모달이 열릴 때만 초기화
   useEffect(() => {
-    if (!isBorrowOffer) {
-      setCollateralInput(minCollateralAmount ? minCollateralAmount.toString() : '');
-      // 사용 가능한 첫 번째 주식 자동 선택
-      if (availableTokensForGroup.length > 0 && !selectedCollateralStock) {
-        setSelectedCollateralStock(availableTokensForGroup[0].symbol);
+    if (open && !isInitialized) {
+      if (!isBorrowOffer) {
+        setCollateralInput(minCollateralAmount ? minCollateralAmount.toString() : '');
+        // 사용 가능한 첫 번째 주식 자동 선택
+        if (availableTokensForGroup.length > 0 && !selectedCollateralStock) {
+          setSelectedCollateralStock(availableTokensForGroup[0].symbol);
+        }
+      } else {
+        setCollateralInput('');
+        setSelectedCollateralStock('');
       }
-    } else {
-      setCollateralInput('');
-      setSelectedCollateralStock('');
+      setIsInitialized(true);
+    } else if (!open) {
+      setIsInitialized(false);
     }
-  }, [isBorrowOffer, minCollateralAmount, open, availableTokensForGroup, selectedCollateralStock]);
+  }, [
+    open,
+    isInitialized,
+    isBorrowOffer,
+    minCollateralAmount,
+    availableTokensForGroup,
+    selectedCollateralStock,
+  ]);
 
   const parsedCollateral = Number(collateralInput);
   const collateralAmount =
@@ -346,7 +361,12 @@ export function MatchModal({ open, onClose, offer, type }: MatchModalProps) {
         if (!selectedCollateralToken) {
           throw new Error('담보 토큰을 선택해주세요.');
         }
-        await mintTokenByMaster('collateral', userAddress, collateralAmountInWei, selectedCollateralToken.address);
+        await mintTokenByMaster(
+          'collateral',
+          userAddress,
+          collateralAmountInWei,
+          selectedCollateralToken.address,
+        );
         setTxSteps((prev) =>
           prev.map((s) =>
             s.id === 'tokenize_collateral'
@@ -359,7 +379,12 @@ export function MatchModal({ open, onClose, offer, type }: MatchModalProps) {
 
         // Step 4: 담보 토큰 Approve
         // selectedCollateralToken은 위에서 이미 정의됨
-        await approveTokenForLending('collateral', collateralAmountInWei, user.id, selectedCollateralToken.address);
+        await approveTokenForLending(
+          'collateral',
+          collateralAmountInWei,
+          user.id,
+          selectedCollateralToken.address,
+        );
         setTxSteps((prev) =>
           prev.map((s) =>
             s.id === 'approve'
@@ -416,6 +441,9 @@ export function MatchModal({ open, onClose, offer, type }: MatchModalProps) {
     setTxSteps([]);
     setTxHash('');
     setIsComplete(false);
+    setCollateralInput('');
+    setSelectedCollateralStock('');
+    setIsInitialized(false);
     onClose();
   };
 
@@ -441,9 +469,9 @@ export function MatchModal({ open, onClose, offer, type }: MatchModalProps) {
       : collateralTokens.find((s) => s.symbol === borrowOffer.collateralStock)
     : // 대여 상품의 경우: availableTokensForGroup에서 찾기
       availableTokensForGroup.find(
-        (t) => t.symbol === selectedCollateralStock || t.symbol === lendOffer.requestedCollateralStock,
-      ) ||
-      collateralTokens.find((s) => s.symbol === lendOffer.requestedCollateralStock);
+        (t) =>
+          t.symbol === selectedCollateralStock || t.symbol === lendOffer.requestedCollateralStock,
+      ) || collateralTokens.find((s) => s.symbol === lendOffer.requestedCollateralStock);
 
   // 트랜잭션 진행 중일 때는 모달 닫기 방지
   const handleOpenChange = (newOpen: boolean) => {

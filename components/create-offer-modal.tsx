@@ -162,7 +162,7 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
       maturityMonths !== null &&
       earlyRepayFee !== '' &&
       Number(earlyRepayFee) >= 0 &&
-      Number(earlyRepayFee) <= 100
+      Number(earlyRepayFee) <= 10
     : selectedCurrency &&
       selectedCategoryId &&
       availableTokens.length > 0 && // 종목군에 토큰이 있어야 함
@@ -174,7 +174,7 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
       maturityMonths !== null &&
       earlyRepayFee !== '' &&
       Number(earlyRepayFee) >= 0 &&
-      Number(earlyRepayFee) <= 100;
+      Number(earlyRepayFee) <= 10;
 
   const handleSubmit = async () => {
     if (!user || !isValid) return;
@@ -777,7 +777,7 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
                     type="number"
                     step="0.1"
                     min="0"
-                    max="30"
+                    max="20"
                     placeholder="0"
                     value={interestRate}
                     onChange={(e) => {
@@ -786,7 +786,7 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
                         setInterestRate('');
                       } else {
                         const numVal = Number.parseFloat(val);
-                        if (!isNaN(numVal) && numVal >= 0 && numVal <= 30) {
+                        if (!isNaN(numVal) && numVal >= 0 && numVal <= 20) {
                           setInterestRate(val);
                         }
                       }
@@ -797,7 +797,29 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
                     %
                   </span>
                 </div>
-                <p className="text-xs text-muted-foreground">0% ~ 30% 범위에서 설정 가능</p>
+                <p className="text-xs text-muted-foreground">0% ~ 20% 범위에서 설정 가능</p>
+                {/* 만기까지 예상 이자 표시 (연이자율 기준) */}
+                {interestRate &&
+                  Number(interestRate) > 0 &&
+                  maturityMonths !== null &&
+                  ((isBorrow && loanAmount && Number.parseFloat(loanAmount) > 0) ||
+                    (!isBorrow && amount && Number.parseFloat(amount) > 0)) && (
+                    <div className="flex items-center justify-between rounded-lg border bg-secondary/50 p-2">
+                      <span className="text-sm text-muted-foreground">만기까지 예상 이자</span>
+                      <span className="font-medium text-primary">
+                        ₩
+                        {(
+                          (isBorrow && loanAmount
+                            ? Number.parseFloat(loanAmount)
+                            : !isBorrow && amount
+                            ? Number.parseFloat(amount)
+                            : 0) *
+                          (Number(interestRate) / 100) *
+                          (getMaturityDays() / 365)
+                        ).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  )}
               </div>
 
               <div className="space-y-3">
@@ -830,7 +852,7 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
                     type="number"
                     step="0.1"
                     min="0"
-                    max="100"
+                    max="10"
                     placeholder="0"
                     value={earlyRepayFee}
                     onChange={(e) => {
@@ -839,7 +861,7 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
                         setEarlyRepayFee('');
                       } else {
                         const numVal = Number.parseFloat(val);
-                        if (!isNaN(numVal) && numVal >= 0 && numVal <= 100) {
+                        if (!isNaN(numVal) && numVal >= 0 && numVal <= 10) {
                           setEarlyRepayFee(val);
                         }
                       }
@@ -851,7 +873,7 @@ export function CreateOfferModal({ open, onClose, type }: CreateOfferModalProps)
                   </span>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  만기 전 상환 시 원금 대비 수수료 (0% ~ 100% 범위에서 설정 가능)
+                  만기 전 상환 시 원금 대비 수수료 (0% ~ 10% 범위에서 설정 가능)
                 </p>
               </div>
 

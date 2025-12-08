@@ -40,10 +40,6 @@ export function useCategoriesWagmi() {
   if (isError || (!isLoading && categoriesArray.length === 0)) {
     // 로컬 config에서 카테고리 ID 목록 가져오기
     finalCategoriesArray = Object.values(CATEGORY_IDS);
-    console.log('useCategoriesWagmi: Using fallback categories from config', {
-      fallbackCategories: finalCategoriesArray.map((id) => id.toString()),
-      originalError: error?.message,
-    });
   }
 
   // 카테고리 ID 배열을 카테고리 정보로 변환
@@ -53,20 +49,6 @@ export function useCategoriesWagmi() {
       name: CATEGORY_NAMES[categoryId.toString()] || `카테고리 ${categoryId.toString()}`,
     }))
     .sort((a, b) => Number(a.id) - Number(b.id)); // ID 순서대로 정렬 (A군=1, B군=2, C군=3)
-
-  // 디버깅: 데이터 확인 (항상 로그 출력)
-  if (!isLoading) {
-    console.log('useCategoriesWagmi:', {
-      rawData,
-      categoriesArray: categoriesArray.map((id) => id.toString()),
-      finalCategoriesArray: finalCategoriesArray.map((id) => id.toString()),
-      categories,
-      error: error?.message,
-      isError,
-      configAddress: CONTRACTS.lendingConfig,
-      usingFallback: isError || categoriesArray.length === 0,
-    });
-  }
 
   return {
     categories,
@@ -117,11 +99,6 @@ export function useCategoryTokensWagmi(categoryId: bigint | null) {
     finalTokens = COLLATERAL_TOKENS.filter(
       (token) => token.categoryId && token.categoryId === categoryId
     );
-    console.log('useCategoryTokensWagmi: Using fallback tokens from config', {
-      categoryId: categoryId.toString(),
-      fallbackTokens: finalTokens.map((t) => t.symbol),
-      originalError: error?.message,
-    });
   }
 
   return {
@@ -176,8 +153,6 @@ export function useAllCategoriesWithTokensWagmi() {
             tokenAddresses = rawResult[0] as `0x${string}`[];
           }
         }
-      } else if (result.status === 'failure') {
-        console.warn(`useAllCategoriesWithTokensWagmi: Failed to get tokens for category ${category.name} (${category.id}):`, result.error);
       }
     }
     
@@ -186,28 +161,6 @@ export function useAllCategoriesWithTokensWagmi() {
       tokens: mapCollateralTokens(tokenAddresses),
     };
   });
-
-  // 디버깅: 전체 결과 확인
-  if (!isLoading) {
-    console.log('useAllCategoriesWithTokensWagmi:', {
-      categories: categories.map((c) => ({ id: c.id.toString(), name: c.name })),
-      dataLength: data?.length,
-      data: data?.map((result, index) => ({
-        index,
-        status: result?.status,
-        result: result?.result,
-        error: result?.error,
-        category: categories[index]?.name,
-      })),
-      categoriesWithTokens: categoriesWithTokens.map((c) => ({
-        category: c.name,
-        tokenCount: c.tokens.length,
-        tokens: c.tokens.map((t) => ({ symbol: t.symbol, address: t.address.toLowerCase() })),
-      })),
-      error: error?.message,
-      isError,
-    });
-  }
 
   return {
     categoriesWithTokens,

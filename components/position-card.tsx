@@ -179,7 +179,7 @@ export function PositionCard({
   return (
     <Card
       className={`overflow-hidden transition-all ${
-        healthFactor < 1.2 && position.status === 'open' ? 'border-destructive/50' : ''
+        healthFactor < 1.2 && position.status === 'open' && isBorrower ? 'border-destructive/50' : ''
       }`}
     >
       <CardContent className="p-4">
@@ -231,7 +231,7 @@ export function PositionCard({
           </div>
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">누적 이자</span>
-            <span className="font-mono text-warning">+{accruedInterest.toLocaleString()} dKRW</span>
+            <span className="font-mono text-warning">+{Number(accruedInterest.toFixed(1)).toLocaleString()} dKRW</span>
           </div>
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">현재 LTV</span>
@@ -268,7 +268,7 @@ export function PositionCard({
           </span>
         </div>
 
-        {healthFactor < 1.2 && position.status === 'open' && (
+        {healthFactor < 1.2 && position.status === 'open' && isBorrower && (
           <div className="mb-4 flex items-center gap-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
             <AlertTriangle className="h-4 w-4" />
             청산 위험! 담보를 추가하거나 대출을 상환하세요

@@ -38,16 +38,6 @@ export function usePositionDataWagmi(offerId: bigint | null) {
     const hfValue = Number(healthFactor);
     // bps 형식이므로 10000으로 나눔 (예: 16679 / 10000 = 1.6679)
     parsedHealthFactor = hfValue / 10000;
-    
-    // 디버깅
-    if (offerId !== null) {
-      console.log('Health Factor raw:', {
-        offerId: offerId.toString(),
-        raw: healthFactor?.toString(),
-        parsed: parsedHealthFactor,
-        error: hfError,
-      });
-    }
   }
 
   return {
