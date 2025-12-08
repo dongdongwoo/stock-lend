@@ -6,6 +6,7 @@ export * from './useTokenBalancesWagmi';
 export * from './useCollateralRiskParamsWagmi';
 export * from './useUserPositionsWagmi';
 export * from './usePositionDataWagmi';
+export * from './useMultiplePositionsDataWagmi';
 export * from './useAllowedTokensWagmi';
 export * from './useLiquidationsWagmi';
 export * from './useCategoriesWagmi';

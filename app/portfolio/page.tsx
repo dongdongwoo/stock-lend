@@ -33,6 +33,7 @@ import {
   useAllowedCollateralTokensWagmi,
   useUserLiquidations,
   useCategoriesWagmi,
+  useMultiplePositionsDataWagmi,
   type UIBorrowOffer,
   type UILendOffer,
 } from '@/lib/hooks';
@@ -339,6 +340,16 @@ export default function PortfolioPage() {
 
   const matchedLendPositions = lenderPositions.filter((p) => p.status === 'matched');
   const closedLendPositions = lenderPositions.filter((p) => p.status === 'closed');
+
+  // 모든 매칭된 포지션의 onChainId 수집 (multicall로 한 번에 조회)
+  const allMatchedPositions = [...matchedBorrowPositions, ...matchedLendPositions];
+  const allPositionOnChainIds = allMatchedPositions
+    .map((p) => p.onChainId)
+    .filter((id): id is bigint => id !== null && id !== undefined);
+
+  // 여러 포지션의 Health Factor와 Accrued Interest를 한 번에 조회 (multicall 사용)
+  const { positionsData: allPositionsData } = useMultiplePositionsDataWagmi(allPositionOnChainIds);
+
   const [showLogin, setShowLogin] = useState(false);
   const [showBuy, setShowBuy] = useState(false);
   const [editBorrowOfferId, setEditBorrowOfferId] = useState<string | null>(null);
@@ -655,6 +666,13 @@ export default function PortfolioPage() {
                               walletAddress={walletAddress || null}
                               onAddCollateral={() => setAddCollateralPosition(position)}
                               onRepay={() => setRepayPosition(position)}
+                              preloadedData={
+                                (position as Position & { onChainId?: bigint }).onChainId
+                                  ? allPositionsData.get(
+                                      (position as Position & { onChainId?: bigint }).onChainId!,
+                                    )
+                                  : undefined
+                              }
                             />
                           ))}
                       </div>
@@ -683,6 +701,13 @@ export default function PortfolioPage() {
                               position={position}
                               walletAddress={walletAddress || null}
                               showActions={false}
+                              preloadedData={
+                                (position as Position & { onChainId?: bigint }).onChainId
+                                  ? allPositionsData.get(
+                                      (position as Position & { onChainId?: bigint }).onChainId!,
+                                    )
+                                  : undefined
+                              }
                             />
                           ))}
                       </div>
@@ -791,6 +816,13 @@ export default function PortfolioPage() {
                               }
                               position={position}
                               walletAddress={walletAddress || null}
+                              preloadedData={
+                                (position as Position & { onChainId?: bigint }).onChainId
+                                  ? allPositionsData.get(
+                                      (position as Position & { onChainId?: bigint }).onChainId!,
+                                    )
+                                  : undefined
+                              }
                             />
                           ))}
                       </div>
@@ -819,6 +851,13 @@ export default function PortfolioPage() {
                               position={position}
                               walletAddress={walletAddress || null}
                               showActions={false}
+                              preloadedData={
+                                (position as Position & { onChainId?: bigint }).onChainId
+                                  ? allPositionsData.get(
+                                      (position as Position & { onChainId?: bigint }).onChainId!,
+                                    )
+                                  : undefined
+                              }
                             />
                           ))}
                       </div>

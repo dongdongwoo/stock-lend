@@ -2,6 +2,7 @@
 
 import { http, createConfig } from 'wagmi';
 import { defineChain } from 'viem';
+import { CONTRACTS } from '../contracts/config';
 
 // Giwa Testnet 체인 정의
 export const giwaTestnet = defineChain({
@@ -14,6 +15,11 @@ export const giwaTestnet = defineChain({
   blockExplorers: {
     default: { name: 'Giwa Explorer', url: 'https://sepolia-explorer.giwa.io' },
   },
+  contracts: {
+    multicall3: {
+      address: CONTRACTS.multicall3,
+    },
+  },
 });
 
 export const wagmiConfig = createConfig({
@@ -23,4 +29,3 @@ export const wagmiConfig = createConfig({
   },
   ssr: true,
 });
-

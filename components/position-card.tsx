@@ -21,6 +21,11 @@ interface PositionCardProps {
   onRepay?: () => void;
   onAddCollateral?: () => void;
   showActions?: boolean;
+  // multicall로 미리 가져온 포지션 데이터 (선택적)
+  preloadedData?: {
+    healthFactor: number;
+    accruedInterest: number;
+  };
 }
 
 export function PositionCard({
@@ -29,15 +34,20 @@ export function PositionCard({
   onRepay,
   onAddCollateral,
   showActions = true,
+  preloadedData,
 }: PositionCardProps) {
   const { user } = useStore();
   const { prices: onChainPrices } = useOraclePricesWagmi();
   const { riskParams } = useCollateralRiskParamsWagmi();
 
-  // 온체인에서 Accrued Interest와 Health Factor 조회
-  // onChainId가 있으면 type과 관계없이 조회 (lender인 경우에도 대출 포지션이므로 조회 가능)
+  // preloadedData가 있으면 사용, 없으면 개별 조회 (fallback)
   const { accruedInterest: onChainAccruedInterest, healthFactor: onChainHealthFactor } =
-    usePositionDataWagmi(position.onChainId ? position.onChainId : null);
+    preloadedData
+      ? {
+          accruedInterest: preloadedData.accruedInterest,
+          healthFactor: preloadedData.healthFactor,
+        }
+      : usePositionDataWagmi(position.onChainId ? position.onChainId : null);
 
   // 온체인 principalDebt 조회
   const { data: borrowOfferData } = useReadContract({

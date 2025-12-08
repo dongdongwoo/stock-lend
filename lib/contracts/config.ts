@@ -34,6 +34,8 @@ export const CONTRACTS = {
   lending: '0xEF7B076977d446623064A3BAcc213bbf2043B02b' as `0x${string}`,
   lendingViewer: '0xEdb4487b496e32C67b7b827858a8C26DBDFBD70D' as `0x${string}`,
   lendingConfig: '0x1e9EF36D9Cc92246D5698d94992A91603B47CB4e' as `0x${string}`,
+  // Multicall3
+  multicall3: '0xcA11bde05977b3631167028862bE2a173976CA11' as `0x${string}`,
 } as const;
 
 // 토큰 주소 → UI 심볼 매핑

@@ -27,3 +27,6 @@ export function Web3Provider({ children }: { children: ReactNode }) {
   );
 }
 
+// QueryClient를 export하여 트랜잭션 후 invalidate에 사용
+export { useQueryClient } from '@tanstack/react-query';
+
